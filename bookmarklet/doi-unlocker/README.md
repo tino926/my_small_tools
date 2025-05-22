@@ -1,64 +1,73 @@
-# 📚 DOI Helper Bookmarklet
+# DOI Helper - Your Speedy Paper Access Pal!
 
-This is a browser bookmarklet that extracts DOI (Digital Object Identifier) values
-from the current webpage and opens them using one of the following services:
+Hey research warriors! DOI Helper is a super handy bookmarklet that sniffs out
+those Digital Object Identifiers (DOIs) on whatever page you're on. Then, it
+zaps you straight to one of these awesome services to (hopefully!) unlock that
+paper:
 
-- 🧪 Sci-Hub
-- 📘 LibGen SciMag
-- 🔗 Official DOI resolver (doi.org)
-
----
-
-## 🚀 How to Use
-
-1. Copy the entire line from `bookmarklet.min.js`.
-2. Create a new browser bookmark.
-3. Paste the copied code into the URL field of the bookmark.
-4. Navigate to a page containing a DOI (e.g. academic publisher sites).
-5. Click the bookmarklet.
-
-You'll be prompted to:
-
-- Select a DOI (if multiple are detected).
-- Choose a source to open the paper.
+- Sci-Hub
+- LibGen SciMag
+- Official DOI resolver (doi.org)
 
 ---
 
-## 🔍 What It Does
+## Getting Started
 
-The script scans the current page for DOI values by:
+It's a piece of cake to get this bookmarklet up and running:
 
-- Reading `<meta>` tags (e.g. `citation_doi`)
-- Searching the page body text
-- Checking anchor (`<a>`) tag URLs
+1. **Copy the Code:** Grab the entire line of code from `bookmarklet.min.js`.
+2. **Make a Bookmark:** Create a new bookmark in your favorite browser.
+3. **Paste the Code:** In the bookmark's URL (or Address) field, paste the code 
+   you copied.
+4. **Find a DOI:** Head over to a webpage that has a DOI on it (like an academic 
+   publisher's site).
+5. **Click It!** Click your new bookmarklet.
 
-It removes duplicates and prompts you to select from the found DOIs, then opens
-the selected DOI with your chosen source.
+You'll then get a couple of quick questions:
 
----
-
-## 🛠 Development
-
-The full readable source is available in `bookmarklet.js`.
-
-You can customize it by:
-
-- Adding more Sci-Hub mirrors
-- Skipping prompts and automating the source selection
-- Replacing `prompt()` with custom UI elements
+- Which DOI d'you want (if it spots more than one).
+- Which service should open it?
 
 ---
 
-## ⚠ Legal & Ethical Notice
+## So, How Does It Do That?
 
-This tool is intended for educational and personal use only.
+This little script is pretty smart about finding DOIs. It looks in a few places:
 
-Accessing paywalled content without proper authorization may violate local laws
-or institutional policies. Users are responsible for ensuring their actions
-comply with applicable regulations.
+- Checks out `<meta>` tags (you know, the `citation_doi` kind).
+- Scans the main text of the page for DOI patterns.
+- Looks at the URLs in links (`<a>` tags) just in case a DOI is hiding there.
+
+Once it finds them, it gets rid of any duplicates, shows you the list, and then
+whisks you away to your chosen service with the DOI you picked.
 
 ---
 
-## 📄 License
+## Want to Tinker?
 
-MIT License — you are free to use, modify, and share this code.
+The full, more readable source code is right there in `bookmarklet.js` if
+you're curious or want to play around.
+
+Here are a few ideas for making it your own:
+
+- Add more Sci-Hub mirrors if you know some good ones.
+- Skip the pop-up questions and make it automatically pick your go-to service.
+- Swap out the standard `prompt()` boxes for a fancier custom UI.
+
+---
+
+## A Quick Heads-Up (The Important Bit)
+
+This tool is meant for your personal educational use and research kicks.
+
+Just a friendly reminder: accessing paywalled content without the green light
+from the owners might go against local laws or your institution's policies.
+You're the captain of your ship, so please make sure your actions are all above
+board.
+
+---
+
+## License
+
+This baby is open source under the MIT License. So go ahead – use it, tweak it,
+share it. Go wild (responsibly, of course)!
