@@ -1,8 +1,17 @@
 import sqlite3
 import pandas as pd # Recommended to use pandas for convenient table data processing
+import os
+from dotenv import load_dotenv
 
-# Path to .mmb file
-db_file = 'my_money.mmb'
+# Load environment variables from .env file
+load_dotenv()
+
+# Path to .mmb file, read from environment variable
+db_file = os.getenv('DB_FILE_PATH')
+
+if not db_file:
+    print("Error: DB_FILE_PATH not found in .env file or environment variables.")
+    exit()
 
 try:
     # Establish connection to the database
