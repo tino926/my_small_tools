@@ -1,5 +1,5 @@
 import sqlite3
-import pandas as pd # Recommended to use pandas for convenient table data processing
+import pandas as pd  # Recommended to use pandas for convenient table data processing
 import os
 from dotenv import load_dotenv
 
@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Path to .mmb file, read from environment variable
-db_file = os.getenv('DB_FILE_PATH')
+db_file = os.getenv("DB_FILE_PATH")
 
 if not db_file:
     print("Error: DB_FILE_PATH not found in .env file or environment variables.")
@@ -15,8 +15,10 @@ if not db_file:
 
 try:
     # Establish connection to the database
-    # Note: If the .mmb file is encrypted (.emb), connecting directly with sqlite3 will fail.
-    # This is because the sqlite3 module does not support AES encryption. You need to decrypt it first in MMEX or use other tools.
+    # Note: If the .mmb file is encrypted (.emb), connecting directly with 
+    # sqlite3 will fail.
+    # This is because the sqlite3 module does not support AES encryption. You 
+    # need to decrypt it first in MMEX or use other tools.
     conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
 
@@ -49,13 +51,14 @@ try:
     # -----------------------------------------------------------
 
     # -----------------------------------------------------------
-    # Example: Use pandas to read 'TRANSACTIONS' table (usually what you're most interested in)
+    # Example: Use pandas to read 'TRANSACTIONS' table (usually what you're most 
+    # interested in)
     print("\n--- Data examples from TRANSACTIONS table (using pandas) ---")
     try:
         # Using pandas' read_sql_query is more convenient
         transactions_df = pd.read_sql_query("SELECT * FROM TRANSACTIONS;", conn)
         if not transactions_df.empty:
-            print(transactions_df.head()) # Display first few rows
+            print(transactions_df.head())  # Display first few rows
             print(f"\nTRANSACTIONS table has {len(transactions_df)} records.")
         else:
             print("No data in TRANSACTIONS table.")
@@ -64,11 +67,14 @@ try:
     # -----------------------------------------------------------
 
     # -----------------------------------------------------------
-    # Example: Read transaction records for a specific account (assuming you know the account name and ID)
+    # Example: Read transaction records for a specific account (assuming you 
+    # know the account name and ID)
     # First, let's find an account ID for an account named 'Cash'
     print("\n--- Query transaction records for a specific account ---")
     try:
-        cursor.execute("SELECT ACCOUNTID, ACCOUNTNAME FROM ACCOUNTS WHERE ACCOUNTNAME = 'Cash';")
+        cursor.execute(
+            "SELECT ACCOUNTID, ACCOUNTNAME FROM ACCOUNTS WHERE ACCOUNTNAME = 'Cash';"
+        )
         cash_account = cursor.fetchone()
 
         if cash_account:
@@ -81,7 +87,9 @@ try:
                 f"SELECT * FROM TRANSACTIONS WHERE ACCOUNTID = {cash_account_id};", conn
             )
             if not transactions_for_cash_df.empty:
-                print(f"\nTransaction records for account '{cash_account_name}' (first few rows):")
+                print(
+                    f"\nTransaction records for account '{cash_account_name}' (first few rows):"
+                )
                 print(transactions_for_cash_df.head())
             else:
                 print(f"Account '{cash_account_name}' has no transaction records.")
@@ -96,6 +104,6 @@ except sqlite3.Error as e:
 
 finally:
     # Ensure connection is closed
-    if 'conn' in locals() and conn:
+    if "conn" in locals() and conn:
         conn.close()
         print(f"\nConnection to {db_file} has been closed.")
