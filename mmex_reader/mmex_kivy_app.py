@@ -16,8 +16,12 @@ from kivy.uix.button import Button
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.popup import Popup
 from kivy.core.window import Window
+
 # from kivy.uix.spinner import Spinner # Spinner not actively used currently
-from kivy.uix.tabbedpanel import TabbedPanel, TabbedPanelHeader # Changed from TabbedPanelItem
+from kivy.uix.tabbedpanel import (
+    TabbedPanel,
+    TabbedPanelHeader,
+)  # Changed from TabbedPanelItem
 from kivy.properties import ObjectProperty, StringProperty, ListProperty
 from kivy.uix.widget import Widget  # For spacer
 from kivy.lang import Builder
@@ -56,7 +60,8 @@ DB_FIELD_CATEGORY_NAME = "CATEGNAME"
 
 # --- UI Color Constants ---
 DEFAULT_TEXT_COLOR_ON_LIGHT_BG = (0, 0, 0, 1)  # Black text for light backgrounds
-DEFAULT_TEXT_COLOR_ON_DARK_BG = (1, 1, 1, 1)   # White text for dark backgrounds
+DEFAULT_TEXT_COLOR_ON_DARK_BG = (1, 1, 1, 1)  # White text for dark backgrounds
+
 
 # --- Database Functions ---
 def load_db_path():
@@ -64,6 +69,7 @@ def load_db_path():
     load_dotenv(dotenv_path=env_path, override=True)
     db_file = os.getenv("DB_FILE_PATH")
     return db_file
+
 
 def get_all_accounts(db_file):
     """Fetches all account names and IDs from the MMEX database."""
@@ -88,6 +94,7 @@ def get_all_accounts(db_file):
     finally:
         if conn:
             conn.close()
+
 
 def get_transactions(db_file, start_date_str, end_date_str, account_id=None):
     """
@@ -122,16 +129,22 @@ def get_transactions(db_file, start_date_str, end_date_str, account_id=None):
             f"WHERE trans.{DB_FIELD_TRANS_DATE} BETWEEN ? AND ?",
         ]
         params = [start_date_str, end_date_str]
-        if account_id is not None: # This filter is now applied AFTER fetching all data, if needed by a tab
+        if (
+            account_id is not None
+        ):  # This filter is now applied AFTER fetching all data, if needed by a tab
             query_parts.append(f"AND trans.{DB_FIELD_TRANS_ACCOUNTID_FK} = ?")
             params.append(account_id)
-        query_parts.append(f"ORDER BY trans.{DB_FIELD_TRANS_DATE} ASC, trans.{DB_FIELD_TRANS_ID} ASC;")
+        query_parts.append(
+            f"ORDER BY trans.{DB_FIELD_TRANS_DATE} ASC, trans.{DB_FIELD_TRANS_ID} ASC;"
+        )
         query = " ".join(query_parts)
         df = pd.read_sql_query(query, conn, params=tuple(params))
         if df.empty:
             return (
                 f"No income/expense records found between {start_date_str} "
-                f"and {end_date_str}" + (f" for account ID {account_id}" if account_id else "") + ".",
+                f"and {end_date_str}"
+                + (f" for account ID {account_id}" if account_id else "")
+                + ".",
                 None,
             )
         return None, df
@@ -145,10 +158,12 @@ def get_transactions(db_file, start_date_str, end_date_str, account_id=None):
         if conn:
             conn.close()
 
+
 class AccountTabContent(BoxLayout):
     """Content for each account tab. Now primarily for displaying filtered data."""
+
     account_id = ObjectProperty(None)
-    account_name = StringProperty('')
+    account_name = StringProperty("")
     # No app_layout reference needed if filtering happens in MMEXAppLayout
 
     def __init__(self, account_id, account_name, **kwargs):
@@ -160,18 +175,19 @@ class AccountTabContent(BoxLayout):
         self.account_name = account_name
 
         self.results_label = Label(
-            text=f"Transactions for {self.account_name}", # Initial message
+            text=f"Transactions for {self.account_name}",  # Initial message
             size_hint_y=None,
             height=30,
-            color=DEFAULT_TEXT_COLOR_ON_DARK_BG # Use white text for tab content
+            color=DEFAULT_TEXT_COLOR_ON_DARK_BG,  # Use white text for tab content
         )
         self.add_widget(self.results_label)
 
         self.scroll_view = ScrollView()
         self.results_grid = GridLayout(cols=6, size_hint_y=None, spacing=2)
-        self.results_grid.bind(minimum_height=self.results_grid.setter('height'))
+        self.results_grid.bind(minimum_height=self.results_grid.setter("height"))
         self.scroll_view.add_widget(self.results_grid)
         self.add_widget(self.scroll_view)
+
 
 class MMEXAppLayout(BoxLayout):
     """Main layout for the MMEX Kivy application."""
@@ -181,7 +197,7 @@ class MMEXAppLayout(BoxLayout):
         self.orientation = "vertical"
         self.padding = [10, 10, 10, 10]
         self.spacing = 10
-        self.all_transactions_df = None # Store the globally queried DataFrame
+        self.all_transactions_df = None  # Store the globally queried DataFrame
 
         # --- Database Path Display ---
         self.db_path_label = Label(
@@ -213,16 +229,18 @@ class MMEXAppLayout(BoxLayout):
         )
         self.global_query_button.bind(on_press=self.run_global_query)
         self.add_widget(self.global_query_button)
- 
+
         # --- Tabbed Panel for Accounts ---
         self.tab_panel = TabbedPanel(
-            do_default_tab=False, tab_pos='top_mid', size_hint_y=0.7 # Adjusted size_hint_y
+            do_default_tab=False,
+            tab_pos="top_mid",
+            size_hint_y=0.7,  # Adjusted size_hint_y
         )
         self.tab_panel.bind(current_tab=self.on_tab_switch)
         self.add_widget(self.tab_panel)
 
-        self._create_all_transactions_tab() # Create the "All Transactions" tab first
-        self.load_account_specific_tabs()    # Then load other account tabs
+        self._create_all_transactions_tab()  # Create the "All Transactions" tab first
+        self.load_account_specific_tabs()  # Then load other account tabs
 
         # --- Exit Button ---
         exit_button_layout = BoxLayout(
@@ -232,32 +250,38 @@ class MMEXAppLayout(BoxLayout):
         exit_button_layout.add_widget(spacer)
         self.exit_button = Button(text="Exit", size_hint_x=None, width=100)
         self.exit_button.bind(on_press=self.exit_app)
-        exit_button_layout.add_widget(self.exit_button) # Correctly add the button to the layout
+        exit_button_layout.add_widget(
+            self.exit_button
+        )  # Correctly add the button to the layout
         self.add_widget(exit_button_layout)
 
-
     def _create_all_transactions_tab(self):
-        self.all_transactions_tab = TabbedPanelHeader(text="All Transactions") # Use TabbedPanelHeader
-        
-        all_trans_content = BoxLayout(orientation='vertical', spacing=5, padding=5)
+        self.all_transactions_tab = TabbedPanelHeader(
+            text="All Transactions"
+        )  # Use TabbedPanelHeader
+
+        all_trans_content = BoxLayout(orientation="vertical", spacing=5, padding=5)
         self.all_transactions_status_label = Label(
             text="Perform a query to see all transactions.",
-            size_hint_y=None, height=30, color=(0,0,0,1)
-        ) # This will be updated to white text below
+            size_hint_y=None,
+            height=30,
+            color=(0, 0, 0, 1),
+        )  # This will be updated to white text below
         all_trans_content.add_widget(self.all_transactions_status_label)
-        
+
         scroll_view_all = ScrollView()
         self.all_transactions_grid = GridLayout(cols=6, size_hint_y=None, spacing=2)
-        self.all_transactions_grid.bind(minimum_height=self.all_transactions_grid.setter('height'))
+        self.all_transactions_grid.bind(
+            minimum_height=self.all_transactions_grid.setter("height")
+        )
         scroll_view_all.add_widget(self.all_transactions_grid)
         all_trans_content.add_widget(scroll_view_all)
-        
+
         self.all_transactions_tab.content = all_trans_content
         self.tab_panel.add_widget(self.all_transactions_tab)
         # Set text color for the status label inside the tab
         self.all_transactions_status_label.color = DEFAULT_TEXT_COLOR_ON_DARK_BG
-        self.tab_panel.default_tab = self.all_transactions_tab # Set as default
-
+        self.tab_panel.default_tab = self.all_transactions_tab  # Set as default
 
     def load_account_specific_tabs(self):
         db_file = load_db_path()
@@ -272,22 +296,28 @@ class MMEXAppLayout(BoxLayout):
 
         if accounts_df is not None and not accounts_df.empty:
             for index, row in accounts_df.iterrows():
-                account_id = row['ACCOUNTID']
-                account_name = str(row['ACCOUNTNAME'])
+                account_id = row["ACCOUNTID"]
+                account_name = str(row["ACCOUNTNAME"])
                 # Use TabbedPanelHeader for consistency if you want to style headers
-                tab_header = TabbedPanelHeader(text=account_name[:25]) # Truncate long names
+                tab_header = TabbedPanelHeader(
+                    text=account_name[:25]
+                )  # Truncate long names
                 # Store account_id and name directly on the header for easy access
-                tab_header.account_id = account_id 
-                tab_header.account_name_full = account_name 
-                
+                tab_header.account_id = account_id
+                tab_header.account_name_full = account_name
+
                 # The content will be an AccountTabContent instance
-                tab_content = AccountTabContent(account_id=account_id, account_name=account_name)
+                tab_content = AccountTabContent(
+                    account_id=account_id, account_name=account_name
+                )
                 tab_header.content = tab_content
                 self.tab_panel.add_widget(tab_header)
         # No "No Accounts" tab here, as "All Transactions" tab always exists.
         # If no accounts, only "All Transactions" tab will be effectively usable for data.
 
-    def _populate_grid_with_dataframe(self, target_grid, df, status_label_widget, status_message_prefix=""):
+    def _populate_grid_with_dataframe(
+        self, target_grid, df, status_label_widget, status_message_prefix=""
+    ):
         """Helper function to populate a GridLayout with DataFrame data."""
         target_grid.clear_widgets()
 
@@ -296,101 +326,145 @@ class MMEXAppLayout(BoxLayout):
                 text="No data to display for current selection.",
                 size_hint_y=None,
                 height=30,
-                color=DEFAULT_TEXT_COLOR_ON_DARK_BG # White text
+                color=DEFAULT_TEXT_COLOR_ON_DARK_BG,  # White text
             )
             target_grid.add_widget(no_data_label)
             if status_label_widget:
-                 status_label_widget.text = f"{status_message_prefix} No records found."
+                status_label_widget.text = f"{status_message_prefix} No records found."
             return
 
         target_grid.cols = 6
-        headers = ['Date', 'Account', 'Payee', 'Category', 'Notes', 'Amount']
+        headers = ["Date", "Account", "Payee", "Category", "Notes", "Amount"]
         for header_text in headers:
             header_label = Label(
-                text=f"[b]{header_text}[/b]", markup=True, size_hint_y=None, height=40,
-                color=DEFAULT_TEXT_COLOR_ON_DARK_BG, halign='left', valign='middle' # White text
+                text=f"[b]{header_text}[/b]",
+                markup=True,
+                size_hint_y=None,
+                height=40,
+                color=DEFAULT_TEXT_COLOR_ON_DARK_BG,
+                halign="left",
+                valign="middle",  # White text
             )
-            header_label.bind(size=header_label.setter('text_size'))
+            header_label.bind(size=header_label.setter("text_size"))
             target_grid.add_widget(header_label)
 
         for index, row in df.iterrows():
             trans_date_full = str(row["TRANSDATE"])
-            trans_date = trans_date_full.split("T")[0] if "T" in trans_date_full else trans_date_full
+            trans_date = (
+                trans_date_full.split("T")[0]
+                if "T" in trans_date_full
+                else trans_date_full
+            )
             row_data = [
                 trans_date,
                 str(row["ACCOUNTNAME"]) if pd.notna(row["ACCOUNTNAME"]) else "",
                 str(row["PAYEENAME"]) if pd.notna(row["PAYEENAME"]) else "",
                 str(row["CATEGNAME"]) if pd.notna(row["CATEGNAME"]) else "",
                 str(row["NOTES"]) if pd.notna(row["NOTES"]) else "",
-                str(row["TRANSAMOUNT"])
+                str(row["TRANSAMOUNT"]),
             ]
             for item in row_data:
                 cell_label = Label(
-                    text=item, size_hint_y=None, height=30, color=DEFAULT_TEXT_COLOR_ON_DARK_BG, # White text
-                    halign='left', valign='middle'
+                    text=item,
+                    size_hint_y=None,
+                    height=30,
+                    color=DEFAULT_TEXT_COLOR_ON_DARK_BG,  # White text
+                    halign="left",
+                    valign="middle",
                 )
-                cell_label.bind(size=cell_label.setter('text_size'))
+                cell_label.bind(size=cell_label.setter("text_size"))
                 target_grid.add_widget(cell_label)
         if status_label_widget:
-            status_label_widget.text = f"{status_message_prefix} Found {len(df)} records."
-
+            status_label_widget.text = (
+                f"{status_message_prefix} Found {len(df)} records."
+            )
 
     def run_global_query(self, instance):
         """Handles the global query button press."""
         db_file = load_db_path()
         start_date = self.start_date_input.text
         end_date = self.end_date_input.text
-        
+
         if not db_file:
             self.show_popup("Error", "Database path not configured in .env file.")
             self.all_transactions_status_label.text = "DB Error. Configure .env file."
             return
 
         self.all_transactions_status_label.text = "Status: Querying all transactions..."
-        self.all_transactions_grid.clear_widgets() # Clear previous global results
+        self.all_transactions_grid.clear_widgets()  # Clear previous global results
 
         # Fetch ALL transactions for the date range (account_id=None)
-        error_message, df = get_transactions(db_file, start_date, end_date, account_id=None)
-        
-        self.all_transactions_df = None # Reset before assigning
+        error_message, df = get_transactions(
+            db_file, start_date, end_date, account_id=None
+        )
+
+        self.all_transactions_df = None  # Reset before assigning
 
         if error_message:
             self.all_transactions_df = None
             if "No income/expense records found" in error_message:
-                self.all_transactions_status_label.text = "No records found for the selected period (all accounts)."
-                self._populate_grid_with_dataframe(self.all_transactions_grid, None, None)
+                self.all_transactions_status_label.text = (
+                    "No records found for the selected period (all accounts)."
+                )
+                self._populate_grid_with_dataframe(
+                    self.all_transactions_grid, None, None
+                )
             else:
                 self.show_popup("Global Query Error", error_message)
-                self.all_transactions_status_label.text = "Global Query failed. See popup."
+                self.all_transactions_status_label.text = (
+                    "Global Query failed. See popup."
+                )
             return
 
         if df is not None and not df.empty:
             self.all_transactions_df = df
-            self._populate_grid_with_dataframe(self.all_transactions_grid, self.all_transactions_df, self.all_transactions_status_label, "All Transactions:")
+            self._populate_grid_with_dataframe(
+                self.all_transactions_grid,
+                self.all_transactions_df,
+                self.all_transactions_status_label,
+                "All Transactions:",
+            )
         else:
-            self.all_transactions_df = None # Ensure it's None if query returned empty
-            self._populate_grid_with_dataframe(self.all_transactions_grid, None, self.all_transactions_status_label, "All Transactions:")
-        
+            self.all_transactions_df = None  # Ensure it's None if query returned empty
+            self._populate_grid_with_dataframe(
+                self.all_transactions_grid,
+                None,
+                self.all_transactions_status_label,
+                "All Transactions:",
+            )
+
         # After global query, refresh the currently active tab if it's an account tab
         self.on_tab_switch(self.tab_panel, self.tab_panel.current_tab)
 
-
     def on_tab_switch(self, tab_panel_instance, current_tab_header):
         """Called when the current tab changes."""
-        if not current_tab_header or not hasattr(current_tab_header, 'content'):
-            return # No tab selected or tab has no content widget yet
+        if not current_tab_header or not hasattr(current_tab_header, "content"):
+            return  # No tab selected or tab has no content widget yet
 
         tab_content_widget = current_tab_header.content
 
         if current_tab_header == self.all_transactions_tab:
             # "All Transactions" tab is selected, ensure its grid is populated if data exists
             if self.all_transactions_df is not None:
-                 self._populate_grid_with_dataframe(self.all_transactions_grid, self.all_transactions_df, self.all_transactions_status_label, "All Transactions:")
+                self._populate_grid_with_dataframe(
+                    self.all_transactions_grid,
+                    self.all_transactions_df,
+                    self.all_transactions_status_label,
+                    "All Transactions:",
+                )
             else:
-                 self._populate_grid_with_dataframe(self.all_transactions_grid, None, self.all_transactions_status_label, "All Transactions:")
-                 if not self.db_path_label.text.endswith("Not Set"): # Only show if DB is set
-                    self.all_transactions_status_label.text = "Perform a global query to see all transactions."
-
+                self._populate_grid_with_dataframe(
+                    self.all_transactions_grid,
+                    None,
+                    self.all_transactions_status_label,
+                    "All Transactions:",
+                )
+                if not self.db_path_label.text.endswith(
+                    "Not Set"
+                ):  # Only show if DB is set
+                    self.all_transactions_status_label.text = (
+                        "Perform a global query to see all transactions."
+                    )
 
         elif isinstance(tab_content_widget, AccountTabContent):
             # An account-specific tab is selected
@@ -398,8 +472,12 @@ class MMEXAppLayout(BoxLayout):
             account_name_of_tab = tab_content_widget.account_name
 
             if self.all_transactions_df is None:
-                tab_content_widget.results_label.text = f"Perform a global query first for {account_name_of_tab}."
-                self._populate_grid_with_dataframe(tab_content_widget.results_grid, None, None)
+                tab_content_widget.results_label.text = (
+                    f"Perform a global query first for {account_name_of_tab}."
+                )
+                self._populate_grid_with_dataframe(
+                    tab_content_widget.results_grid, None, None
+                )
             else:
                 # Filter the global DataFrame for this account
                 # Ensure ACCOUNTID column exists in all_transactions_df
@@ -409,56 +487,54 @@ class MMEXAppLayout(BoxLayout):
                 # Or, better, ensure ACCOUNTID is part of the global query result.
                 # For now, let's assume ACCOUNTNAME is unique enough for this filtering example.
                 # A more robust way is to ensure ACCOUNTID is in self.all_transactions_df
-                
+
                 # We need to filter by ACCOUNTID. The global query already includes ACCOUNTNAME.
                 # Let's assume the `get_transactions` when `account_id` is None still returns
                 # the ACCOUNTNAME from the join. If we need ACCOUNTID for filtering,
                 # the global query should also select trans.ACCOUNTID.
                 # For now, we'll filter by ACCOUNTNAME.
-                
+
                 # Correct approach: Filter by ACCOUNTID.
                 # The global query in get_transactions should ideally also select trans.ACCOUNTID_FK as ACCOUNTID_FOR_FILTER
                 # For now, we'll assume the ACCOUNTNAME is sufficient for filtering from the displayed data.
                 # This is a simplification. A robust solution would ensure ACCOUNTID is in all_transactions_df.
-                
+
                 # Let's refine: the `get_transactions` already joins with ACCOUNTLIST_V1
                 # and selects ACCOUNTLIST_V1.ACCOUNTNAME.
                 # We need to filter based on the account_id of the tab.
                 # The `all_transactions_df` contains an 'ACCOUNTNAME' column.
                 # We need to map tab's account_id to the name or ensure ACCOUNTID is in all_transactions_df.
-                
+
                 # Simplest for now: if all_transactions_df has ACCOUNTNAME, filter by that.
                 # This assumes account names are unique identifiers for display filtering.
                 # A better way is to ensure the global query also selects the account ID.
                 # Let's assume `all_transactions_df` has an `ACCOUNTNAME` column.
-                
+
                 # The `get_transactions` function, when `account_id` is None, fetches all transactions
                 # and joins with `ACCOUNTLIST_V1` to get `ACCOUNTNAME`.
                 # So, `self.all_transactions_df` will have an `ACCOUNTNAME` column.
                 # We can filter by this `ACCOUNTNAME`.
-                
+
                 # The `AccountTabContent` has `self.account_name`.
-                filtered_df = self.all_transactions_df[self.all_transactions_df['ACCOUNTNAME'] == account_name_of_tab]
-                
+                filtered_df = self.all_transactions_df[
+                    self.all_transactions_df["ACCOUNTNAME"] == account_name_of_tab
+                ]
+
                 self._populate_grid_with_dataframe(
                     tab_content_widget.results_grid,
                     filtered_df,
                     tab_content_widget.results_label,
-                    f"{account_name_of_tab}:"
+                    f"{account_name_of_tab}:",
                 )
         else:
             # Some other type of tab content, or content not yet set
             pass
 
-
     def show_popup(self, title, message):
         """Displays a popup message to the user."""
         popup_layout = BoxLayout(orientation="vertical", padding=10, spacing=10)
         # Popups usually have a light background, so black text is fine here.
-        popup_label = Label(
-            text=message,
-            color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG
-        )
+        popup_label = Label(text=message, color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG)
         close_button = Button(text="Close", size_hint_y=None, height=40)
         popup_layout.add_widget(popup_label)
         popup_layout.add_widget(close_button)
@@ -510,6 +586,7 @@ class MMEXKivyApp(App):
                 "Kivy will use its default font."
             )
         return MMEXAppLayout()
+
 
 if __name__ == "__main__":
     os.chdir(SCRIPT_DIR)
