@@ -21,7 +21,7 @@ from kivy.core.window import Window
 from kivy.uix.tabbedpanel import (
     TabbedPanel,
     TabbedPanelHeader,
-)  # Changed from TabbedPanelItem
+)
 from kivy.properties import ObjectProperty, StringProperty, ListProperty
 from kivy.uix.widget import Widget  # For spacer
 from kivy.lang import Builder
@@ -38,6 +38,7 @@ from datetime import datetime, timedelta
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # --- Font Configuration ---
+# Path to the Unicode font file. Ensure this font supports characters in your database.
 UNICODE_FONT_PATH = "fonts/NotoSansCJKtc-Regular.otf"
 
 # --- MMEX Database Schema Configuration ---
@@ -129,12 +130,14 @@ def get_transactions(db_file, start_date_str, end_date_str, account_id=None):
             f"LEFT JOIN {DB_TABLE_CATEGORIES} AS cat ON trans.{DB_FIELD_TRANS_CATEGID_FK} = cat.{DB_FIELD_CATEGORY_ID_PK}",
             f"WHERE trans.{DB_FIELD_TRANS_DATE} BETWEEN ? AND ?",
         ]
-        end_date_str_p1 = (datetime.strptime(end_date_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+        end_date_str_p1 = (
+            datetime.strptime(end_date_str, "%Y-%m-%d") + timedelta(days=1)
+        ).strftime("%Y-%m-%d")
         params = [start_date_str, end_date_str_p1]
         if (
             account_id is not None
-        ):  # This filter is now applied AFTER fetching all data, if needed by a tab
-            query_parts.append(f"AND trans.{DB_FIELD_TRANS_ACCOUNTID_FK} = ?")
+        ):  # Add condition to filter by account ID in the SQL query if provided.
+            query_parts.append(f"AND trans.{DB_FIELD_TRANS_ACCOUNTID_FK} = ?")  # type: ignore
             params.append(account_id)
         query_parts.append(
             f"ORDER BY trans.{DB_FIELD_TRANS_DATE} ASC, trans.{DB_FIELD_TRANS_ID} ASC;"
@@ -180,7 +183,7 @@ class AccountTabContent(BoxLayout):
             text=f"Transactions for {self.account_name}",  # Initial message
             size_hint_y=None,
             height=30,
-            color=DEFAULT_TEXT_COLOR_ON_DARK_BG,  # Use white text for tab content
+            color=DEFAULT_TEXT_COLOR_ON_DARK_BG,
         )
         self.add_widget(self.results_label)
 
@@ -216,22 +219,30 @@ class MMEXAppLayout(BoxLayout):
         date_input_layout.add_widget(
             Label(text="Start Date:", color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG)
         )
-        self.start_date_input = TextInput(text="2025-01-01", multiline=False)
+
+        def get_first_day_of_last_month():
+            today = datetime.now()
+            first_day_of_current_month = today.replace(day=1)
+            first_day_of_last_month = (
+                first_day_of_current_month - timedelta(days=1)
+            ).replace(day=1)
+            return first_day_of_last_month.strftime("%Y-%m-%d")
+
+        self.start_date_input = TextInput(
+            text=get_first_day_of_last_month(), multiline=False
+        )
         date_input_layout.add_widget(self.start_date_input)
         date_input_layout.add_widget(
             Label(text="End Date:", color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG)
         )
         self.end_date_input = TextInput(
-            text=datetime.now().strftime("%Y-%m-%d"), 
-            multiline=False
+            text=datetime.now().strftime("%Y-%m-%d"), multiline=False
         )
         date_input_layout.add_widget(self.end_date_input)
         self.add_widget(date_input_layout)
 
         # --- Global Query Button ---
-        self.global_query_button = Button(
-            text="Load data", size_hint_y=None, height=40
-        )
+        self.global_query_button = Button(text="Load data", size_hint_y=None, height=40)
         self.global_query_button.bind(on_press=self.run_global_query)
         self.add_widget(self.global_query_button)
 
@@ -254,10 +265,8 @@ class MMEXAppLayout(BoxLayout):
         spacer = Widget(size_hint_x=1)
         exit_button_layout.add_widget(spacer)
         self.exit_button = Button(text="Exit", size_hint_x=None, width=100)
-        self.exit_button.bind(on_press=self.exit_app)
-        exit_button_layout.add_widget(
-            self.exit_button
-        )  # Correctly add the button to the layout
+        self.exit_button.bind(on_press=self.exit_app)  # type: ignore
+        exit_button_layout.add_widget(self.exit_button)
         self.add_widget(exit_button_layout)
 
     def _create_all_transactions_tab(self):
@@ -331,7 +340,7 @@ class MMEXAppLayout(BoxLayout):
                 text="No data to display for current selection.",
                 size_hint_y=None,
                 height=30,
-                color=DEFAULT_TEXT_COLOR_ON_DARK_BG,  # White text
+                color=DEFAULT_TEXT_COLOR_ON_DARK_BG,
             )
             target_grid.add_widget(no_data_label)
             if status_label_widget:
@@ -348,7 +357,7 @@ class MMEXAppLayout(BoxLayout):
                 height=40,
                 color=DEFAULT_TEXT_COLOR_ON_DARK_BG,
                 halign="left",
-                valign="middle",  # White text
+                valign="middle",
             )
             header_label.bind(size=header_label.setter("text_size"))
             target_grid.add_widget(header_label)
@@ -373,7 +382,7 @@ class MMEXAppLayout(BoxLayout):
                     text=item,
                     size_hint_y=None,
                     height=30,
-                    color=DEFAULT_TEXT_COLOR_ON_DARK_BG,  # White text
+                    color=DEFAULT_TEXT_COLOR_ON_DARK_BG,
                     halign="left",
                     valign="middle",
                 )
@@ -484,43 +493,16 @@ class MMEXAppLayout(BoxLayout):
                     tab_content_widget.results_grid, None, None
                 )
             else:
-                # Filter the global DataFrame for this account
-                # Ensure ACCOUNTID column exists in all_transactions_df
-                # The get_transactions function aliases acc.DB_FIELD_ACCOUNT_ID_PK as ACCOUNTID if joined,
-                # but if we query all transactions, ACCOUNTID might not be directly available unless we select it.
-                # Let's assume the ACCOUNTNAME is what we need to filter by from the global df.
-                # Or, better, ensure ACCOUNTID is part of the global query result.
-                # For now, let's assume ACCOUNTNAME is unique enough for this filtering example.
-                # A more robust way is to ensure ACCOUNTID is in self.all_transactions_df
-
-                # We need to filter by ACCOUNTID. The global query already includes ACCOUNTNAME.
-                # Let's assume the `get_transactions` when `account_id` is None still returns
-                # the ACCOUNTNAME from the join. If we need ACCOUNTID for filtering,
-                # the global query should also select trans.ACCOUNTID.
-                # For now, we'll filter by ACCOUNTNAME.
-
-                # Correct approach: Filter by ACCOUNTID.
-                # The global query in get_transactions should ideally also select trans.ACCOUNTID_FK as ACCOUNTID_FOR_FILTER
-                # For now, we'll assume the ACCOUNTNAME is sufficient for filtering from the displayed data.
-                # This is a simplification. A robust solution would ensure ACCOUNTID is in all_transactions_df.
-
-                # Let's refine: the `get_transactions` already joins with ACCOUNTLIST_V1
-                # and selects ACCOUNTLIST_V1.ACCOUNTNAME.
-                # We need to filter based on the account_id of the tab.
-                # The `all_transactions_df` contains an 'ACCOUNTNAME' column.
-                # We need to map tab's account_id to the name or ensure ACCOUNTID is in all_transactions_df.
-
-                # Simplest for now: if all_transactions_df has ACCOUNTNAME, filter by that.
-                # This assumes account names are unique identifiers for display filtering.
-                # A better way is to ensure the global query also selects the account ID.
-                # Let's assume `all_transactions_df` has an `ACCOUNTNAME` column.
-
-                # The `get_transactions` function, when `account_id` is None, fetches all transactions
-                # and joins with `ACCOUNTLIST_V1` to get `ACCOUNTNAME`.
-                # So, `self.all_transactions_df` will have an `ACCOUNTNAME` column.
-                # We can filter by this `ACCOUNTNAME`.
-
-                # The `AccountTabContent` has `self.account_name`.
+                # Filter the global DataFrame for this specific account tab.
+                # Currently, filtering is done using 'ACCOUNTNAME' from all_transactions_df,
+                # matching against the tab's account_name. This relies on ACCOUNTNAME being
+                # available in the global query (which it is, via a join) and sufficiently
+                # unique for this purpose.
+                #
+                # TODO: For more robust filtering (e.g., if account names might not be unique,
+                # or to align with `account_id` stored on the tab), consider modifying
+                # the global query in `get_transactions` to also select `trans.ACCOUNTID`
+                # (aliased appropriately) and then filter `all_transactions_df` using this ID.
                 filtered_df = self.all_transactions_df[
                     self.all_transactions_df["ACCOUNTNAME"] == account_name_of_tab
                 ]
@@ -542,7 +524,7 @@ class MMEXAppLayout(BoxLayout):
         popup_label = Label(text=message, color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG)
         close_button = Button(text="Close", size_hint_y=None, height=40)
         popup_layout.add_widget(popup_label)
-        popup_layout.add_widget(close_button)
+        popup_layout.add_widget(close_button)  # type: ignore
         popup = Popup(title=title, content=popup_layout, size_hint=(0.8, 0.4))
         close_button.bind(on_press=popup.dismiss)
         popup.open()
