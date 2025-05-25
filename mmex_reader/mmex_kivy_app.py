@@ -232,7 +232,10 @@ class MMEXAppLayout(BoxLayout):
             self.results_grid.add_widget(header_label)
 
         for index, row in df.iterrows():
-            trans_date = str(row["TRANSDATE"])  # Ensure string
+            # Ensure string and format date to YYYY-MM-DD
+            trans_date_full = str(row["TRANSDATE"])
+            trans_date = trans_date_full.split("T")[0] if "T" in trans_date_full else trans_date_full
+            
             account_name = (
                 str(row["ACCOUNTNAME"]) if pd.notna(row["ACCOUNTNAME"]) else ""
             )
