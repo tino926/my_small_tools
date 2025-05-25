@@ -1,7 +1,8 @@
 import sqlite3
-import pandas as pd  # Recommended to use pandas for convenient table data processing
+import pandas as pd
 import os
 from dotenv import load_dotenv
+from datetime import datetime # Import datetime
 
 # get the directory of the current script
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -11,6 +12,21 @@ os.chdir(script_dir)
 
 # Load environment variables from .env file
 load_dotenv()
+
+# --- Define Date Range --- Start
+# You can modify the start and end dates here
+# Date format: YYYY-MM-DD
+START_DATE_STR = "2025-01-01" # Example: Set start date
+END_DATE_STR = "2025-05-31"   # Example: Set end date
+
+# Validate date format (optional, but recommended)
+try:
+    datetime.strptime(START_DATE_STR, "%Y-%m-%d")
+    datetime.strptime(END_DATE_STR, "%Y-%m-%d")
+except ValueError:
+    print(f"Error: Incorrect date format. Please use YYYY-MM-DD. Start date: {START_DATE_STR}, End date: {END_DATE_STR}")
+    exit()
+# --- Define Date Range --- End
 
 # Path to .mmb file, read from environment variable
 db_file = os.getenv("DB_FILE_PATH")
@@ -38,72 +54,62 @@ try:
         print(f"- {table[0]}")
 
     # -----------------------------------------------------------
-    # Example: Read all data from 'ACCOUNTS' table
-    print("\n--- Data examples from ACCOUNTLIST_V1 table ---") # Updated print statement
+    # Example: Read all data from 'ACCOUNTLIST_V1' table
+    print("\n--- Data examples from ACCOUNTLIST_V1 table ---")
     try:
-        cursor.execute("SELECT * FROM ACCOUNTLIST_V1;") # Changed ACCOUNTS to ACCOUNTLIST_V1
+        cursor.execute("SELECT * FROM ACCOUNTLIST_V1;")
         # Get column names
         column_names = [description[0] for description in cursor.description]
         print(f"Columns: {column_names}")
 
         rows = cursor.fetchall()
         if rows:
-            for row in rows:
+            for row in rows: # Print a few example rows
                 print(row)
+                if rows.index(row) > 1: # Limit to 3 rows for brevity
+                    break
         else:
-            print("No data in ACCOUNTLIST_V1 table.") # Updated print statement
+            print("No data in ACCOUNTLIST_V1 table.")
     except sqlite3.OperationalError as e:
-        print(f"Unable to read ACCOUNTLIST_V1 table: {e}") # Updated print statement
+        print(f"Unable to read ACCOUNTLIST_V1 table: {e}")
     # -----------------------------------------------------------
 
-    # -----------------------------------------------------------
-    # Example: Use pandas to read 'TRANSACTIONS' table (usually what you're most 
-    # interested in)
-    print("\n--- Data examples from CHECKINGACCOUNT_V1 table (using pandas) ---") # Updated print statement
+    # --- ADDED: Read, filter, and print income/expense records for the specified date range by time series --- Start
+    print(f"\n--- Income/Expense records from {START_DATE_STR} to {END_DATE_STR} ---")
     try:
-        # Using pandas' read_sql_query is more convenient
-        transactions_df = pd.read_sql_query("SELECT * FROM CHECKINGACCOUNT_V1;", conn) # Changed TRANSACTIONS
-        if not transactions_df.empty:
-            print(transactions_df.head())  # Display first few rows
-            print(f"\nCHECKINGACCOUNT_V1 table has {len(transactions_df)} records.") # Updated print statement
+        # Assume date column is TRANSDATE, and amount column is TRANSAMOUNT
+        # Assume CHECKINGACCOUNT_V1 has a CATEGID column to link to CATEGORY_V1
+        query_transactions_by_date = f"""
+            SELECT 
+                ACCOUNTLIST_V1.ACCOUNTNAME, 
+                CHECKINGACCOUNT_V1.TRANSDATE, 
+                CHECKINGACCOUNT_V1.NOTES, 
+                CHECKINGACCOUNT_V1.TRANSAMOUNT, 
+                PAYEE_V1.PAYEENAME,
+                CATEGORY_V1.CATEGNAME
+            FROM CHECKINGACCOUNT_V1
+            LEFT JOIN ACCOUNTLIST_V1 ON CHECKINGACCOUNT_V1.ACCOUNTID = ACCOUNTLIST_V1.ACCOUNTID
+            LEFT JOIN PAYEE_V1 ON CHECKINGACCOUNT_V1.PAYEEID = PAYEE_V1.PAYEEID
+            LEFT JOIN CATEGORY_V1 ON CHECKINGACCOUNT_V1.CATEGID = CATEGORY_V1.CATEGID  -- Assume CHECKINGACCOUNT_V1.CATEGID exists
+            WHERE CHECKINGACCOUNT_V1.TRANSDATE BETWEEN '{START_DATE_STR}' AND '{END_DATE_STR}'
+            ORDER BY CHECKINGACCOUNT_V1.TRANSDATE ASC, CHECKINGACCOUNT_V1.TRANSID ASC;
+        """
+        
+        dated_transactions_df = pd.read_sql_query(query_transactions_by_date, conn)
+
+        if not dated_transactions_df.empty:
+            print(f"Found {len(dated_transactions_df)} records between {START_DATE_STR} and {END_DATE_STR}:")
+            for index, row in dated_transactions_df.iterrows():
+                # Added category name to the output
+                print(f"{row['TRANSDATE']} | {row['ACCOUNTNAME']:<15} | {row['PAYEENAME'] if row['PAYEENAME'] else '':<20} | {row['CATEGNAME'] if row['CATEGNAME'] else '':<25} | {row['NOTES'] if row['NOTES'] else '':<30} | {row['TRANSAMOUNT']}")
         else:
-            print("No data in CHECKINGACCOUNT_V1 table.") # Updated print statement
+            print(f"No income/expense records found between {START_DATE_STR} and {END_DATE_STR}.")
+            
     except pd.io.sql.DatabaseError as e:
-        print(f"Unable to read CHECKINGACCOUNT_V1 table using pandas: {e}") # Updated print statement
-    # -----------------------------------------------------------
-
-    # -----------------------------------------------------------
-    # Example: Read transaction records for a specific account (assuming you 
-    # know the account name and ID)
-    # First, let's find an account ID for an account named 'Cash'
-    print("\n--- Query transaction records for a specific account ---")
-    try:
-        cursor.execute(
-            "SELECT ACCOUNTID, ACCOUNTNAME FROM ACCOUNTLIST_V1 WHERE ACCOUNTNAME = '現金';" # Changed 'Cash' to '現金'
-        )
-        cash_account = cursor.fetchone()
-
-        if cash_account:
-            cash_account_id = cash_account[0]
-            cash_account_name = cash_account[1]
-            print(f"Found account '{cash_account_name}' (ID: {cash_account_id})")
-
-            # Query all transactions for this account
-            transactions_for_cash_df = pd.read_sql_query(
-                f"SELECT * FROM CHECKINGACCOUNT_V1 WHERE ACCOUNTID = {cash_account_id};", conn # Changed TRANSACTIONS
-            )
-            if not transactions_for_cash_df.empty:
-                print(
-                    f"\nTransaction records for account '{cash_account_name}' (first few rows):"
-                )
-                print(transactions_for_cash_df.head())
-            else:
-                print(f"Account '{cash_account_name}' has no transaction records.")
-        else:
-            print("Could not find an account named 'Cash'.")
+        print(f"Error reading transaction records for the specified date range: {e}")
     except sqlite3.OperationalError as e:
-        print(f"Error occurred when querying specific account transactions: {e}")
-    # -----------------------------------------------------------
+        print(f"SQL error when querying transaction records for the specified date range: {e}. Please check SQL syntax and table/column names.")
+    # --- ADDED: Read, filter, and print income/expense records for the specified date range by time series --- End
 
 except sqlite3.Error as e:
     print(f"Error connecting to database: {e}")
