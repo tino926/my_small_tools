@@ -2,7 +2,7 @@ import sqlite3
 import pandas as pd
 import os
 from dotenv import load_dotenv
-from datetime import datetime # Import datetime
+from datetime import datetime  # Import datetime
 
 # get the directory of the current script
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -16,15 +16,17 @@ load_dotenv()
 # --- Define Date Range --- Start
 # You can modify the start and end dates here
 # Date format: YYYY-MM-DD
-START_DATE_STR = "2025-01-01" # Example: Set start date
-END_DATE_STR = "2025-05-31"   # Example: Set end date
+START_DATE_STR = "2025-01-01"  # Example: Set start date
+END_DATE_STR = "2025-05-31"  # Example: Set end date
 
 # Validate date format (optional, but recommended)
 try:
     datetime.strptime(START_DATE_STR, "%Y-%m-%d")
     datetime.strptime(END_DATE_STR, "%Y-%m-%d")
 except ValueError:
-    print(f"Error: Incorrect date format. Please use YYYY-MM-DD. Start date: {START_DATE_STR}, End date: {END_DATE_STR}")
+    print(
+        f"Error: Incorrect date format. Please use YYYY-MM-DD. Start date: {START_DATE_STR}, End date: {END_DATE_STR}"
+    )
     exit()
 # --- Define Date Range --- End
 
@@ -37,9 +39,9 @@ if not db_file:
 
 try:
     # Establish connection to the database
-    # Note: If the .mmb file is encrypted (.emb), connecting directly with 
+    # Note: If the .mmb file is encrypted (.emb), connecting directly with
     # sqlite3 will fail.
-    # This is because the sqlite3 module does not support AES encryption. You 
+    # This is because the sqlite3 module does not support AES encryption. You
     # need to decrypt it first in MMEX or use other tools.
     conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
@@ -64,9 +66,9 @@ try:
 
         rows = cursor.fetchall()
         if rows:
-            for row in rows: # Print a few example rows
+            for row in rows:  # Print a few example rows
                 print(row)
-                if rows.index(row) > 1: # Limit to 3 rows for brevity
+                if rows.index(row) > 1:  # Limit to 3 rows for brevity
                     break
         else:
             print("No data in ACCOUNTLIST_V1 table.")
@@ -94,21 +96,29 @@ try:
             WHERE CHECKINGACCOUNT_V1.TRANSDATE BETWEEN '{START_DATE_STR}' AND '{END_DATE_STR}'
             ORDER BY CHECKINGACCOUNT_V1.TRANSDATE ASC, CHECKINGACCOUNT_V1.TRANSID ASC;
         """
-        
+
         dated_transactions_df = pd.read_sql_query(query_transactions_by_date, conn)
 
         if not dated_transactions_df.empty:
-            print(f"Found {len(dated_transactions_df)} records between {START_DATE_STR} and {END_DATE_STR}:")
+            print(
+                f"Found {len(dated_transactions_df)} records between {START_DATE_STR} and {END_DATE_STR}:"
+            )
             for index, row in dated_transactions_df.iterrows():
                 # Added category name to the output
-                print(f"{row['TRANSDATE']} | {row['ACCOUNTNAME']:<15} | {row['PAYEENAME'] if row['PAYEENAME'] else '':<20} | {row['CATEGNAME'] if row['CATEGNAME'] else '':<25} | {row['NOTES'] if row['NOTES'] else '':<30} | {row['TRANSAMOUNT']}")
+                print(
+                    f"{row['TRANSDATE']} | {row['ACCOUNTNAME']:<15} | {row['PAYEENAME'] if row['PAYEENAME'] else '':<20} | {row['CATEGNAME'] if row['CATEGNAME'] else '':<25} | {row['NOTES'] if row['NOTES'] else '':<30} | {row['TRANSAMOUNT']}"
+                )
         else:
-            print(f"No income/expense records found between {START_DATE_STR} and {END_DATE_STR}.")
-            
+            print(
+                f"No income/expense records found between {START_DATE_STR} and {END_DATE_STR}."
+            )
+
     except pd.io.sql.DatabaseError as e:
         print(f"Error reading transaction records for the specified date range: {e}")
     except sqlite3.OperationalError as e:
-        print(f"SQL error when querying transaction records for the specified date range: {e}. Please check SQL syntax and table/column names.")
+        print(
+            f"SQL error when querying transaction records for the specified date range: {e}. Please check SQL syntax and table/column names."
+        )
     # --- ADDED: Read, filter, and print income/expense records for the specified date range by time series --- End
 
 except sqlite3.Error as e:
