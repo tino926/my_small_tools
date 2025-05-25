@@ -12,17 +12,31 @@ from kivy.uix.popup import Popup
 from kivy.core.window import Window
 from kivy.uix.spinner import Spinner
 from kivy.uix.widget import Widget # For spacer
+from kivy.lang import Builder # Changed from kivy.factory import Factory
 import os
 
 import sqlite3
 import pandas as pd
-import os
+# import os # Removed duplicate import
 from dotenv import load_dotenv
 from datetime import datetime
 
+# --- Script Directory ---
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# --- Font Configuration ---
+# IMPORTANT: Replace 'YourUnicodeFont.ttf' with the actual font file name you are using.
+# This font file should support the non-English characters that might be present in your database.
+# For example, for Chinese/Japanese/Korean, you might use "NotoSansCJKsc-Regular.otf" or a similar Unicode font.
+# For broader Unicode support, "NotoSans-Regular.ttf" could be an option.
+# Place the font file in the same directory as this script, in a specified subdirectory (e.g., 'fonts'),
+# or provide an absolute path.
+UNICODE_FONT_PATH = "fonts/NotoSansCJKtc-Regular.otf"  # Example: Using a font from the 'fonts' subdirectory.
+
 # --- Database Functions (adapted from mmex_reader.py) ---
 def load_db_path():
-    load_dotenv()
+    env_path = os.path.join(SCRIPT_DIR, ".env")
+    load_dotenv(dotenv_path=env_path, override=True) # Load .env from script directory
     db_file = os.getenv("DB_FILE_PATH")
     if not db_file:
         return None
@@ -53,10 +67,10 @@ def get_transactions(db_file, start_date_str, end_date_str):
             LEFT JOIN ACCOUNTLIST_V1 ON CHECKINGACCOUNT_V1.ACCOUNTID = ACCOUNTLIST_V1.ACCOUNTID
             LEFT JOIN PAYEE_V1 ON CHECKINGACCOUNT_V1.PAYEEID = PAYEE_V1.PAYEEID
             LEFT JOIN CATEGORY_V1 ON CHECKINGACCOUNT_V1.CATEGID = CATEGORY_V1.CATEGID
-            WHERE CHECKINGACCOUNT_V1.TRANSDATE BETWEEN '{start_date_str}' AND '{end_date_str}'
+            WHERE CHECKINGACCOUNT_V1.TRANSDATE BETWEEN ? AND ?
             ORDER BY CHECKINGACCOUNT_V1.TRANSDATE ASC, CHECKINGACCOUNT_V1.TRANSID ASC;
         """
-        df = pd.read_sql_query(query, conn)
+        df = pd.read_sql_query(query, conn, params=(start_date_str, end_date_str))
         if df.empty:
             return f"No income/expense records found between {start_date_str} and {end_date_str}.", None
         return None, df # Return None for error, and df for data
@@ -83,13 +97,13 @@ class MMEXAppLayout(BoxLayout):
 
         # --- Font Selector --- 
         font_selector_layout = BoxLayout(size_hint_y=None, height=40, spacing=10)
-        font_selector_layout.add_widget(Label(text='Select Font:', color=default_text_color)) # Changed to English
+        font_selector_layout.add_widget(Label(text='Select Font:', color=default_text_color))
 
         # --- Database Path Display ---
         self.db_path_label = Label(
-            text=f"DB: {load_db_path() or 'Not Set'}",
+            text=f"DB: {load_db_path() or 'Not Set'}", # "Not Set" is already in English
             size_hint_y=None,
-            height=30,
+            height=40, # Increased height for better display with CJK fonts, kept for consistency
             color=default_text_color
         )
         self.add_widget(self.db_path_label)
@@ -97,24 +111,24 @@ class MMEXAppLayout(BoxLayout):
         # --- Date Inputs ---
         input_layout = GridLayout(cols=2, size_hint_y=None, height=70, spacing=10)
         self.start_date_label = Label(text='Start Date (YYYY-MM-DD):', color=default_text_color)
-        input_layout.add_widget(self.start_date_label)
+        input_layout.add_widget(Label(text='Start Date (YYYY-MM-DD):', color=default_text_color))
         self.start_date_input = TextInput(text="2025-01-01", multiline=False) # Keep date format as is
         input_layout.add_widget(self.start_date_input)
 
         self.end_date_label = Label(text='End Date (YYYY-MM-DD):', color=default_text_color)
-        input_layout.add_widget(self.end_date_label)
+        input_layout.add_widget(Label(text='End Date (YYYY-MM-DD):', color=default_text_color))
         self.end_date_input = TextInput(text="2025-05-31", multiline=False) # Keep date format as is
         input_layout.add_widget(self.end_date_input)
         self.add_widget(input_layout)
 
         # --- Query Button ---
-        self.query_button = Button(text='Query Transactions', size_hint_y=None, height=40) # Changed to English
+        self.query_button = Button(text='Query Transactions', size_hint_y=None, height=40)
         self.query_button.bind(on_press=self.run_query)
         self.add_widget(self.query_button)
 
         # --- Results Area ---
         self.results_label = Label(
-            text='Results will appear here.', # Changed to English
+            text='Results will appear here.',
             size_hint_y=None,
             height=30,
             color=default_text_color
@@ -149,17 +163,13 @@ class MMEXAppLayout(BoxLayout):
     def _display_dataframe(self, df):
         """Formats and displays the DataFrame in the results_text area."""
         if df is None or df.empty:
-            self.results_text.text = "No data to display." # Should ideally be handled by run_query
+            self.results_text.text = "No data to display."
             return
 
-        # Font tags are removed as we are no longer managing specific fonts for data display.
         # The results_text Label will use Kivy's default font.
         # Markup [b] for bold is still used.
-        font_tag_open = ""
-        font_tag_close = ""
 
-        # Header remains in English
-        header = f"{font_tag_open}[b]{'Date':<12} | {'Account':<15} | {'Payee':<20} | {'Category':<25} | {'Notes':<30} | {'Amount'}[/b]{font_tag_close}\n"
+        header = f"[b]{'Date':<12} | {'Account':<15} | {'Payee':<20} | {'Category':<25} | {'Notes':<30} | {'Amount'}[/b]\n"
         header += "-" * 120 + "\n"
         formatted_results = header
         for index, row in df.iterrows():
@@ -170,8 +180,8 @@ class MMEXAppLayout(BoxLayout):
             notes = str(row['NOTES']) if pd.notna(row['NOTES']) else ''
             trans_amount = row['TRANSAMOUNT']
             
-            # Each data line is wrapped in font tags if a custom font is selected
-            formatted_results += f"{font_tag_open}{trans_date} | {account_name:<15} | {payee_name:<20} | {categ_name:<25} | {notes:<30} | {trans_amount}{font_tag_close}\n"
+            # Data line
+            formatted_results += f"{trans_date} | {account_name:<15} | {payee_name:<20} | {categ_name:<25} | {notes:<30} | {trans_amount}\n"
         self.results_text.text = formatted_results
 
     def run_query(self, instance):
@@ -215,7 +225,7 @@ class MMEXAppLayout(BoxLayout):
     def show_popup(self, title, message):
         popup_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
         
-        # Widgets will use Kivy's default font
+        # Widgets in popup will use the globally set font
         popup_label = Label(text=message, color=(0,0,0,1))
         close_button = Button(text='Close', size_hint_y=None, height=40)
         popup_layout.add_widget(popup_label)
@@ -233,14 +243,37 @@ class MMEXAppLayout(BoxLayout):
 class MMEXKivyApp(App):
     def build(self):
         Window.clearcolor = (0.9, 0.9, 0.9, 1)
-        # Optional: Set a global default font for Label and TextInput if most of your app uses Chinese
-        # from kivy.factory import Factory
-        # Factory.Label.font_name = CHINESE_FONT # <--- ENSURE THIS (AND SIMILAR) ARE COMMENTED OUT OR REMOVED
-        # Factory.TextInput.font_name = CHINESE_FONT
-        # Factory.Button.font_name = CHINESE_FONT 
+
+        # Resolve font path: user can specify relative (to script) or absolute path
+        actual_font_path = UNICODE_FONT_PATH
+        if not os.path.isabs(actual_font_path):
+            actual_font_path = os.path.join(SCRIPT_DIR, actual_font_path)
+
+        # Set global default font to support non-English characters
+        try:
+            if not os.path.exists(actual_font_path):
+                print(f"Warning: Font file '{actual_font_path}' not found. Kivy will use its default font.")
+                print(f"Please ensure you have placed a font file supporting non-English characters at '{SCRIPT_DIR}' or provide the correct UNICODE_FONT_PATH.")
+                # The app will still try to run with Kivy's default font, but non-English characters might not display correctly.
+            else:
+                # Escape backslashes in the path for the Kv string, as Kivy's Kv parser needs them escaped.
+                kv_font_path = actual_font_path.replace("\\", "\\\\")
+                kv_string = f"""
+<Label>:
+    font_name: '{kv_font_path}'
+<TextInput>:
+    font_name: '{kv_font_path}'
+<Button>:
+    font_name: '{kv_font_path}'
+"""
+                Builder.load_string(kv_string)
+                print(f"Successfully set default font to: {actual_font_path}")
+        except Exception as e:
+            print(f"Error setting global font '{actual_font_path}': {e}. Kivy will use its default font.")
+
         return MMEXAppLayout()
 
 if __name__ == '__main__':
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    os.chdir(script_dir)
+    # SCRIPT_DIR is defined globally
+    os.chdir(SCRIPT_DIR) # Change CWD to script's directory for Kivy and other relative paths
     MMEXKivyApp().run()
