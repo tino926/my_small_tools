@@ -42,6 +42,30 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # subdirectory (e.g., 'fonts'), or provide an absolute path.
 UNICODE_FONT_PATH = "fonts/NotoSansCJKtc-Regular.otf"  # Example: Using a font from the 'fonts' subdirectory.
 
+# --- MMEX Database Schema Configuration (Example - adapt to your target MMEX version) ---
+# You would ideally load these from a config file or detect them.
+# For simplicity, defined as constants here.
+DB_TABLE_TRANSACTIONS = "CHECKINGACCOUNT_V1"
+DB_TABLE_ACCOUNTS = "ACCOUNTLIST_V1"
+DB_TABLE_PAYEES = "PAYEE_V1"
+DB_TABLE_CATEGORIES = "CATEGORY_V1"
+
+# Field names for Transactions table
+DB_FIELD_TRANS_ID = "TRANSID"
+DB_FIELD_TRANS_DATE = "TRANSDATE"
+DB_FIELD_TRANS_NOTES = "NOTES"
+DB_FIELD_TRANS_AMOUNT = "TRANSAMOUNT"
+DB_FIELD_TRANS_ACCOUNTID_FK = "ACCOUNTID" # Foreign key to Accounts table
+DB_FIELD_TRANS_PAYEEID_FK = "PAYEEID"     # Foreign key to Payees table
+DB_FIELD_TRANS_CATEGID_FK = "CATEGID"     # Foreign key to Categories table
+
+DB_FIELD_ACCOUNT_ID_PK = "ACCOUNTID" # Primary key in Accounts table
+DB_FIELD_ACCOUNT_NAME = "ACCOUNTNAME"
+# ... Add other field name constants for Payees and Categories tables as needed for joins
+DB_FIELD_PAYEE_ID_PK = "PAYEEID"
+DB_FIELD_PAYEE_NAME = "PAYEENAME"
+DB_FIELD_CATEGORY_ID_PK = "CATEGID"
+DB_FIELD_CATEGORY_NAME = "CATEGNAME"
 
 # --- Database Functions (adapted from mmex_reader.py) ---
 def load_db_path():
@@ -73,20 +97,25 @@ def get_transactions(db_file, start_date_str, end_date_str):
     try:
         conn = sqlite3.connect(db_file)
         query = f"""
-            SELECT 
-                ACCOUNTLIST_V1.ACCOUNTNAME, 
-                CHECKINGACCOUNT_V1.TRANSDATE, 
-                CHECKINGACCOUNT_V1.NOTES, 
-                CHECKINGACCOUNT_V1.TRANSAMOUNT, 
-                PAYEE_V1.PAYEENAME,
-                CATEGORY_V1.CATEGNAME
-            FROM CHECKINGACCOUNT_V1
-            LEFT JOIN ACCOUNTLIST_V1 ON CHECKINGACCOUNT_V1.ACCOUNTID = ACCOUNTLIST_V1.ACCOUNTID
-            LEFT JOIN PAYEE_V1 ON CHECKINGACCOUNT_V1.PAYEEID = PAYEE_V1.PAYEEID
-            LEFT JOIN CATEGORY_V1 ON CHECKINGACCOUNT_V1.CATEGID = CATEGORY_V1.CATEGID
-            WHERE CHECKINGACCOUNT_V1.TRANSDATE BETWEEN ? AND ?
-            ORDER BY CHECKINGACCOUNT_V1.TRANSDATE ASC, CHECKINGACCOUNT_V1.TRANSID ASC;
+            SELECT
+                acc.{DB_FIELD_ACCOUNT_NAME} AS ACCOUNTNAME,
+                trans.{DB_FIELD_TRANS_DATE} AS TRANSDATE,
+                trans.{DB_FIELD_TRANS_NOTES} AS NOTES,
+                trans.{DB_FIELD_TRANS_AMOUNT} AS TRANSAMOUNT,
+                payee.{DB_FIELD_PAYEE_NAME} AS PAYEENAME,
+                cat.{DB_FIELD_CATEGORY_NAME} AS CATEGNAME
+            FROM {DB_TABLE_TRANSACTIONS} AS trans
+            LEFT JOIN {DB_TABLE_ACCOUNTS} AS acc
+                ON trans.{DB_FIELD_TRANS_ACCOUNTID_FK} = acc.{DB_FIELD_ACCOUNT_ID_PK}
+            LEFT JOIN {DB_TABLE_PAYEES} AS payee
+                ON trans.{DB_FIELD_TRANS_PAYEEID_FK} = payee.{DB_FIELD_PAYEE_ID_PK}
+            LEFT JOIN {DB_TABLE_CATEGORIES} AS cat
+                ON trans.{DB_FIELD_TRANS_CATEGID_FK} = cat.{DB_FIELD_CATEGORY_ID_PK}
+            WHERE trans.{DB_FIELD_TRANS_DATE} BETWEEN ? AND ?
+            ORDER BY trans.{DB_FIELD_TRANS_DATE} ASC, trans.{DB_FIELD_TRANS_ID} ASC;
         """
+        # The aliases (AS ACCOUNTNAME, AS TRANSDATE, etc.) ensure the DataFrame columns
+        # match what the _display_dataframe method expects.
         df = pd.read_sql_query(query, conn, params=(start_date_str, end_date_str))
         if df.empty:
             return (
