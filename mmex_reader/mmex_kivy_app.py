@@ -173,12 +173,17 @@ class MMEXAppLayout(BoxLayout):
         self.add_widget(self.results_label)
 
         self.scroll_view = ScrollView()
-        self.results_text = Label(
-            text="", markup=True, size_hint_y=None, color=default_text_color
-        )
-        self.results_text.bind(texture_size=self.results_text.setter("size"))
-        self.scroll_view.add_widget(self.results_text)
+        # self.results_text will be replaced by a GridLayout for better alignment
+        # self.results_text = Label(
+        #     text="", markup=True, size_hint_y=None, color=default_text_color
+        # )
+        # self.results_text.bind(texture_size=self.results_text.setter("size"))
+        # self.scroll_view.add_widget(self.results_text)
+        self.results_grid = GridLayout(cols=6, size_hint_y=None, spacing=2)
+        self.results_grid.bind(minimum_height=self.results_grid.setter('height'))
+        self.scroll_view.add_widget(self.results_grid)
         self.add_widget(self.scroll_view)
+
 
         # --- Exit Button ---
         exit_button_layout = BoxLayout(
@@ -198,56 +203,85 @@ class MMEXAppLayout(BoxLayout):
     def _display_dataframe(self, df):
         """Formats and displays the DataFrame in the results_text area."""
         if df is None or df.empty:
-            self.results_text.text = "No data to display."
+            # self.results_text.text = "No data to display."
+            self.results_grid.clear_widgets() # Clear previous grid content
+            no_data_label = Label(text="No data to display.", size_hint_y=None, height=30)
+            self.results_grid.add_widget(no_data_label) # Add a single label
+            # Make the label span all columns if possible, or adjust grid cols
+            # For simplicity, we'll just add it. It might look a bit off if grid has many cols.
+            # A better way for "no data" might be to hide the grid and show a separate label.
             return
 
-        # The results_text Label will use the globally set default font.
-        # Markup [b] for bold is used.
+        self.results_grid.clear_widgets() # Clear previous results
+        self.results_grid.cols = 6 # Ensure 6 columns for data + header
 
-        header = f"[b]{'Date':<12} | {'Account':<15} | {'Payee':<20} | {'Category':<25} | {'Notes':<30} | {'Amount'}[/b]\n"
-        header += "-" * 120 + "\n"
-        formatted_results = header
+        # Define column properties for better control if needed later
+        # For now, we'll use default Label behavior within GridLayout cells
+        headers = ['Date', 'Account', 'Payee', 'Category', 'Notes', 'Amount']
+        for header_text in headers:
+            header_label = Label(
+                text=f"[b]{header_text}[/b]",
+                markup=True,
+                size_hint_y=None,
+                height=40, # Adjust height as needed
+                color=(0,0,0,1), # Explicitly set text color to black
+                halign='left',
+                valign='middle'
+            )
+            header_label.bind(size=header_label.setter('text_size')) # For text wrapping
+            self.results_grid.add_widget(header_label)
+
         for index, row in df.iterrows():
             trans_date = str(row["TRANSDATE"])  # Ensure string
             account_name = (
                 str(row["ACCOUNTNAME"]) if pd.notna(row["ACCOUNTNAME"]) else ""
             )
             payee_name = str(row["PAYEENAME"]) if pd.notna(row["PAYEENAME"]) else ""
-            categ_name = str(row["CATEGNAME"]) if pd.notna(row["CATEGNAME"]) else ""
+            categ_name = (
+                str(row["CATEGNAME"]) if pd.notna(row["CATEGNAME"]) else ""
+            )
             notes = str(row["NOTES"]) if pd.notna(row["NOTES"]) else ""
             trans_amount = row["TRANSAMOUNT"]
 
-            # Format each data line
-            formatted_results += (
-                f"{trans_date} | {account_name:<15} | {payee_name:<20} | "
-                f"{categ_name:<25} | {notes:<30} | {trans_amount}\n"
-            )
-        self.results_text.text = formatted_results
+            row_data = [trans_date, account_name, payee_name, categ_name, notes, str(trans_amount)]
+            for item in row_data:
+                cell_label = Label(
+                    text=item,
+                    size_hint_y=None,
+                    height=30, # Adjust height as needed
+                    color=(0,0,0,1), # Explicitly set text color to black
+                    halign='left',
+                    valign='middle'
+                )
+                cell_label.bind(size=cell_label.setter('text_size')) # For text wrapping
+                self.results_grid.add_widget(cell_label)
 
     def run_query(self, instance):
         """Handles the query button press, fetches and displays transactions."""
         db_file = load_db_path()
         start_date = self.start_date_input.text
         end_date = self.end_date_input.text
-
         if not db_file:
             self.show_popup("Error", "Database path not configured in .env file.")
             return
 
-        self.results_text.text = "Querying..."
+        # self.results_text.text = "Querying..." # results_text is removed
+        # Update results_label to show querying status
         self.results_label.text = "Status: Processing query..."
         self.last_df_data = None  # Clear previous DataFrame
+        self.results_grid.clear_widgets() # Clear grid before new query
 
         error_message, df = get_transactions(db_file, start_date, end_date)
 
         if error_message:
-            self.results_text.text = ""  # Clear previous results before showing error
+            # self.results_text.text = "" # No longer using self.results_text directly for data
             # Distinguish "no data" message from actual errors
             if "No income/expense records found" in error_message:
                 self.results_label.text = "No records found for the selected period."
-                self.results_text.text = (
-                    "Please try different dates or check your database."
-                )
+                # self.results_text.text was here, message is now part of results_label
+                # or handled by _display_dataframe(None)
+                # Optionally, display this message in the grid area too
+                self._display_dataframe(None) # Will show "No data to display"
             else:  # Actual database or pandas error
                 self.show_popup("Query Error", error_message)
                 self.results_label.text = "Query failed. See popup for details."
@@ -264,7 +298,8 @@ class MMEXAppLayout(BoxLayout):
             # This case handles if get_transactions might return (None, empty_df)
             # or (None, None) in the future
             self.results_label.text = "No records found for the selected period."
-            self.results_text.text = "The query returned no data."
+            # self.results_text.text = "The query returned no data."
+            self._display_dataframe(None) # Will show "No data to display"
 
     def show_popup(self, title, message):
         """Displays a popup message to the user."""
