@@ -32,6 +32,7 @@ import pandas as pd
 
 from dotenv import load_dotenv
 from datetime import datetime
+from datetime import datetime, timedelta
 
 # --- Script Directory ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -128,7 +129,8 @@ def get_transactions(db_file, start_date_str, end_date_str, account_id=None):
             f"LEFT JOIN {DB_TABLE_CATEGORIES} AS cat ON trans.{DB_FIELD_TRANS_CATEGID_FK} = cat.{DB_FIELD_CATEGORY_ID_PK}",
             f"WHERE trans.{DB_FIELD_TRANS_DATE} BETWEEN ? AND ?",
         ]
-        params = [start_date_str, end_date_str]
+        end_date_str_p1 = (datetime.strptime(end_date_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+        params = [start_date_str, end_date_str_p1]
         if (
             account_id is not None
         ):  # This filter is now applied AFTER fetching all data, if needed by a tab
@@ -212,20 +214,23 @@ class MMEXAppLayout(BoxLayout):
         # --- Global Date Inputs ---
         date_input_layout = GridLayout(cols=2, size_hint_y=None, height=70, spacing=10)
         date_input_layout.add_widget(
-            Label(text="Start Date (YYYY-MM-DD):", color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG)
+            Label(text="Start Date:", color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG)
         )
         self.start_date_input = TextInput(text="2025-01-01", multiline=False)
         date_input_layout.add_widget(self.start_date_input)
         date_input_layout.add_widget(
-            Label(text="End Date (YYYY-MM-DD):", color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG)
+            Label(text="End Date:", color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG)
         )
-        self.end_date_input = TextInput(text="2025-05-31", multiline=False)
+        self.end_date_input = TextInput(
+            text=datetime.now().strftime("%Y-%m-%d"), 
+            multiline=False
+        )
         date_input_layout.add_widget(self.end_date_input)
         self.add_widget(date_input_layout)
 
         # --- Global Query Button ---
         self.global_query_button = Button(
-            text="Query All Transactions", size_hint_y=None, height=40
+            text="Load data", size_hint_y=None, height=40
         )
         self.global_query_button.bind(on_press=self.run_global_query)
         self.add_widget(self.global_query_button)
@@ -257,7 +262,7 @@ class MMEXAppLayout(BoxLayout):
 
     def _create_all_transactions_tab(self):
         self.all_transactions_tab = TabbedPanelHeader(
-            text="All Transactions"
+            text="All"
         )  # Use TabbedPanelHeader
 
         all_trans_content = BoxLayout(orientation="vertical", spacing=5, padding=5)
