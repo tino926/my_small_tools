@@ -3,6 +3,12 @@ import pandas as pd  # Recommended to use pandas for convenient table data proce
 import os
 from dotenv import load_dotenv
 
+# get the directory of the current script
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# change the working directory to the script directory
+os.chdir(script_dir)
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -33,9 +39,9 @@ try:
 
     # -----------------------------------------------------------
     # Example: Read all data from 'ACCOUNTS' table
-    print("\n--- Data examples from ACCOUNTS table ---")
+    print("\n--- Data examples from ACCOUNTLIST_V1 table ---") # Updated print statement
     try:
-        cursor.execute("SELECT * FROM ACCOUNTS;")
+        cursor.execute("SELECT * FROM ACCOUNTLIST_V1;") # Changed ACCOUNTS to ACCOUNTLIST_V1
         # Get column names
         column_names = [description[0] for description in cursor.description]
         print(f"Columns: {column_names}")
@@ -45,25 +51,25 @@ try:
             for row in rows:
                 print(row)
         else:
-            print("No data in ACCOUNTS table.")
+            print("No data in ACCOUNTLIST_V1 table.") # Updated print statement
     except sqlite3.OperationalError as e:
-        print(f"Unable to read ACCOUNTS table: {e}")
+        print(f"Unable to read ACCOUNTLIST_V1 table: {e}") # Updated print statement
     # -----------------------------------------------------------
 
     # -----------------------------------------------------------
     # Example: Use pandas to read 'TRANSACTIONS' table (usually what you're most 
     # interested in)
-    print("\n--- Data examples from TRANSACTIONS table (using pandas) ---")
+    print("\n--- Data examples from CHECKINGACCOUNT_V1 table (using pandas) ---") # Updated print statement
     try:
         # Using pandas' read_sql_query is more convenient
-        transactions_df = pd.read_sql_query("SELECT * FROM TRANSACTIONS;", conn)
+        transactions_df = pd.read_sql_query("SELECT * FROM CHECKINGACCOUNT_V1;", conn) # Changed TRANSACTIONS
         if not transactions_df.empty:
             print(transactions_df.head())  # Display first few rows
-            print(f"\nTRANSACTIONS table has {len(transactions_df)} records.")
+            print(f"\nCHECKINGACCOUNT_V1 table has {len(transactions_df)} records.") # Updated print statement
         else:
-            print("No data in TRANSACTIONS table.")
+            print("No data in CHECKINGACCOUNT_V1 table.") # Updated print statement
     except pd.io.sql.DatabaseError as e:
-        print(f"Unable to read TRANSACTIONS table using pandas: {e}")
+        print(f"Unable to read CHECKINGACCOUNT_V1 table using pandas: {e}") # Updated print statement
     # -----------------------------------------------------------
 
     # -----------------------------------------------------------
@@ -73,7 +79,7 @@ try:
     print("\n--- Query transaction records for a specific account ---")
     try:
         cursor.execute(
-            "SELECT ACCOUNTID, ACCOUNTNAME FROM ACCOUNTS WHERE ACCOUNTNAME = 'Cash';"
+            "SELECT ACCOUNTID, ACCOUNTNAME FROM ACCOUNTLIST_V1 WHERE ACCOUNTNAME = '現金';" # Changed 'Cash' to '現金'
         )
         cash_account = cursor.fetchone()
 
@@ -84,7 +90,7 @@ try:
 
             # Query all transactions for this account
             transactions_for_cash_df = pd.read_sql_query(
-                f"SELECT * FROM TRANSACTIONS WHERE ACCOUNTID = {cash_account_id};", conn
+                f"SELECT * FROM CHECKINGACCOUNT_V1 WHERE ACCOUNTID = {cash_account_id};", conn # Changed TRANSACTIONS
             )
             if not transactions_for_cash_df.empty:
                 print(
