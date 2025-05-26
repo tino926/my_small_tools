@@ -204,10 +204,12 @@ class MMEXAppLayout(BoxLayout):
         self.padding = [10, 10, 10, 10]
         self.spacing = 10
         self.all_transactions_df = None  # Store the globally queried DataFrame
+        self.db_file_path = load_db_path() # Load DB path once
 
         # --- Database Path Display ---
         self.db_path_label = Label(
-            text=f"DB: {load_db_path() or 'Not Set'}",
+            # text=f"DB: {load_db_path() or 'Not Set'}",
+            text=f"DB: {self.db_file_path or 'Not Set'}",
             size_hint_y=None,
             height=40,
             # This label is on the main light grey background
@@ -301,12 +303,12 @@ class MMEXAppLayout(BoxLayout):
         self.tab_panel.default_tab = self.all_transactions_tab  # Set as default
 
     def load_account_specific_tabs(self):
-        db_file = load_db_path()
-        if not db_file:
+        # db_file = load_db_path()
+        if not self.db_file_path:
             # Error already shown by db_path_label or initial global query attempt
             return
 
-        error_msg, accounts_df = get_all_accounts(db_file)
+        error_msg, accounts_df = get_all_accounts(self.db_file_path)
         if error_msg:
             self.show_popup("Error Loading Accounts", error_msg)
             return
@@ -398,11 +400,11 @@ class MMEXAppLayout(BoxLayout):
 
     def run_global_query(self, instance):
         """Handles the global query button press."""
-        db_file = load_db_path()
+        # db_file = load_db_path()
         start_date = self.start_date_input.text
         end_date = self.end_date_input.text
 
-        if not db_file:
+        if not self.db_file_path:
             self.show_popup("Error", "Database path not configured in .env file.")
             self.all_transactions_status_label.text = "DB Error. Configure .env file."
             return
@@ -412,7 +414,7 @@ class MMEXAppLayout(BoxLayout):
 
         # Fetch ALL transactions for the date range (account_id=None)
         error_message, df = get_transactions(
-            db_file, start_date, end_date, account_id=None
+            self.db_file_path, start_date, end_date, account_id=None
         )
 
         self.all_transactions_df = None  # Reset before assigning
@@ -584,5 +586,11 @@ class MMEXKivyApp(App):
 
 
 if __name__ == "__main__":
+    print("--- MMEX Database Schema Configuration ---")
+    for name, value in globals().copy().items():
+        if name.startswith("DB_TABLE_") or name.startswith("DB_FIELD_"):
+            print(f"{name}: {value}")
+    print("----------------------------------------")
+
     os.chdir(SCRIPT_DIR)
     MMEXKivyApp().run()
