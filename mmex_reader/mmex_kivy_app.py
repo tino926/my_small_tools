@@ -4,9 +4,6 @@ from an MMEX (MoneyManagerEx) database file.
 """
 
 import kivy
-
-kivy.require("2.1.0")  # replace with your Kivy version if needed
-
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
@@ -22,7 +19,7 @@ from kivy.uix.tabbedpanel import (
     TabbedPanel,
     TabbedPanelHeader,
 )
-from kivy.properties import ObjectProperty, StringProperty, ListProperty
+from kivy.properties import ObjectProperty, StringProperty
 from kivy.uix.widget import Widget  # For spacer
 from kivy.lang import Builder
 import os
@@ -32,7 +29,11 @@ import pandas as pd
 
 from dotenv import load_dotenv
 from datetime import datetime
-from datetime import datetime, timedelta
+from datetime import timedelta
+
+kivy.require("2.1.0")  # replace with your Kivy version if needed
+
+
 
 # --- Script Directory ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
