@@ -231,6 +231,9 @@ class MMEXAppLayout(BoxLayout):
         self.start_date_input = TextInput(
             text=get_first_day_of_last_month(), multiline=False
         )
+        self.start_date_input.bind(
+            on_text_validate=self.trigger_global_query_on_date_change
+        )
         date_input_layout.add_widget(self.start_date_input)
         date_input_layout.add_widget(
             Label(text="End Date:", color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG)
@@ -238,13 +241,9 @@ class MMEXAppLayout(BoxLayout):
         self.end_date_input = TextInput(
             text=datetime.now().strftime("%Y-%m-%d"), multiline=False
         )
+        self.end_date_input.bind(on_text_validate=self.trigger_global_query_on_date_change)
         date_input_layout.add_widget(self.end_date_input)
         self.add_widget(date_input_layout)
-
-        # --- Global Query Button ---
-        self.global_query_button = Button(text="Load data", size_hint_y=None, height=40)
-        self.global_query_button.bind(on_press=self.run_global_query)
-        self.add_widget(self.global_query_button)
 
         # --- Tabbed Panel for Accounts ---
         self.tab_panel = TabbedPanel(
@@ -268,6 +267,9 @@ class MMEXAppLayout(BoxLayout):
         self.exit_button.bind(on_press=self.exit_app)  # type: ignore
         exit_button_layout.add_widget(self.exit_button)
         self.add_widget(exit_button_layout)
+
+        # Automatically load data on startup
+        self.run_global_query(None) # Pass None as instance since no button is pressed
 
     def _create_all_transactions_tab(self):
         self.all_transactions_tab = TabbedPanelHeader(
@@ -449,6 +451,11 @@ class MMEXAppLayout(BoxLayout):
 
         # After global query, refresh the currently active tab if it's an account tab
         self.on_tab_switch(self.tab_panel, self.tab_panel.current_tab)
+
+    def trigger_global_query_on_date_change(self, instance):
+        """Called when date input fields are validated (Enter or focus loss)."""
+        # The 'instance' is the TextInput widget that triggered the event.
+        self.run_global_query(instance)
 
     def on_tab_switch(self, tab_panel_instance, current_tab_header):
         """Called when the current tab changes."""
