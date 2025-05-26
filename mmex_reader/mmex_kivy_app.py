@@ -215,7 +215,7 @@ class MMEXAppLayout(BoxLayout):
         self.add_widget(self.db_path_label)
 
         # --- Global Date Inputs ---
-        date_input_layout = GridLayout(cols=2, size_hint_y=None, height=70, spacing=10)
+        date_input_layout = GridLayout(cols=4, size_hint_y=None, height=40, spacing=10)
         date_input_layout.add_widget(
             Label(text="Start Date:", color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG)
         )
