@@ -51,30 +51,40 @@ try:
     # Get all table names
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
     tables = cursor.fetchall()
-    print("\nTables in the database:")
-    for table in tables:
-        print(f"- {table[0]}")
+    print("\n--- Database Schema and Sample Data ---")
+    if not tables:
+        print("No tables found in the database.")
+    else:
+        print(f"Found {len(tables)} tables. Details below:")
+        for table_row in tables:
+            table_name = table_row[0]
+            print(f"\n--- Table: {table_name} ---")
 
-    # -----------------------------------------------------------
-    # Example: Read all data from 'ACCOUNTLIST_V1' table
-    print("\n--- Data examples from ACCOUNTLIST_V1 table ---")
-    try:
-        cursor.execute("SELECT * FROM ACCOUNTLIST_V1;")
-        # Get column names
-        column_names = [description[0] for description in cursor.description]
-        print(f"Columns: {column_names}")
+            # Get column information using PRAGMA table_info
+            cursor.execute(f"PRAGMA table_info('{table_name}');")
+            columns_info = cursor.fetchall()
+            if columns_info:
+                print("Columns (name, type, notnull, default_value, pk):")
+                for col in columns_info:
+                    # col: (cid, name, type, notnull, dflt_value, pk)
+                    print(f"  - {col[1]} ({col[2]}, {'NOT NULL' if col[3] else 'NULL'}, Default: {col[4]}, PK: {col[5]})")
+            else:
+                print("  No column information found for this table.")
 
-        rows = cursor.fetchall()
-        if rows:
-            for row in rows:  # Print a few example rows
-                print(row)
-                if rows.index(row) > 1:  # Limit to 3 rows for brevity
-                    break
-        else:
-            print("No data in ACCOUNTLIST_V1 table.")
-    except sqlite3.OperationalError as e:
-        print(f"Unable to read ACCOUNTLIST_V1 table: {e}")
-    # -----------------------------------------------------------
+            # Get a few sample rows
+            try:
+                cursor.execute(f"SELECT * FROM '{table_name}' LIMIT 3;")
+                sample_column_names = [description[0] for description in cursor.description]
+                sample_rows = cursor.fetchall()
+                if sample_rows:
+                    print(f"Sample rows (first 3 rows, columns: {', '.join(sample_column_names)}):")
+                    for row_idx, row_data in enumerate(sample_rows):
+                        print(f"  Row {row_idx + 1}: {row_data}")
+                else:
+                    print("  No data in this table or table is empty.")
+            except sqlite3.OperationalError as e_select:
+                print(f"  Could not fetch sample rows: {e_select}")
+    print("\n-------------------------------------------")
 
     # --- ADDED: Read, filter, and print income/expense records for the specified date range by time series --- Start
     print(f"\n--- Income/Expense records from {START_DATE_STR} to {END_DATE_STR} ---")
