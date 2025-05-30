@@ -83,8 +83,6 @@ def load_db_path():
 
 def get_all_accounts(db_file):
     """Fetches all account names and IDs from the MMEX database."""
-    if not db_file:
-        return "Error: DB_FILE_PATH not found.", None
     conn = None
     try:
         conn = sqlite3.connect(db_file)
@@ -111,8 +109,6 @@ def get_transactions(db_file, start_date_str, end_date_str, account_id=None):
     Fetches transactions from the MMEX database within a given date range,
     optionally filtered by account_id.
     """
-    if not db_file:
-        return "Error: DB_FILE_PATH not found.", None
     try:
         datetime.strptime(start_date_str, "%Y-%m-%d")
         datetime.strptime(end_date_str, "%Y-%m-%d")
@@ -131,6 +127,7 @@ def get_transactions(db_file, start_date_str, end_date_str, account_id=None):
             f"trans.{DB_FIELD_TRANS_NOTES} AS NOTES,",
             f"trans.{DB_FIELD_TRANS_AMOUNT} AS TRANSAMOUNT,",
             f"payee.{DB_FIELD_PAYEE_NAME} AS PAYEENAME,",
+            f"trans.{DB_FIELD_TRANS_ACCOUNTID_FK} AS TRANSACTION_ACCOUNTID,", # Added for robust filtering
             f"cat.{DB_FIELD_CATEGORY_NAME} AS CATEGNAME,",
             # Subquery to concatenate all tags for a transaction
             f"""(
@@ -326,7 +323,6 @@ class MMEXAppLayout(BoxLayout):
         self.tab_panel.default_tab = self.all_transactions_tab  # Set as default
 
     def load_account_specific_tabs(self):
-        # db_file = load_db_path()
         if not self.db_file_path:
             # Error already shown by db_path_label or initial global query attempt
             return
@@ -434,7 +430,6 @@ class MMEXAppLayout(BoxLayout):
 
     def run_global_query(self, instance):
         """Handles the global query button press."""
-        # db_file = load_db_path()
         start_date = self.start_date_input.text
         end_date = self.end_date_input.text
 
@@ -543,17 +538,9 @@ class MMEXAppLayout(BoxLayout):
                 )
             else:
                 # Filter the global DataFrame for this specific account tab.
-                # Currently, filtering is done using 'ACCOUNTNAME' from all_transactions_df,
-                # matching against the tab's account_name. This relies on ACCOUNTNAME being
-                # available in the global query (which it is, via a join) and sufficiently
-                # unique for this purpose.
-                #
-                # TODO: For more robust filtering (e.g., if account names might not be unique,
-                # or to align with `account_id` stored on the tab), consider modifying
-                # the global query in `get_transactions` to also select `trans.ACCOUNTID`
-                # (aliased appropriately) and then filter `all_transactions_df` using this ID.
+                # Filter using TRANSACTION_ACCOUNTID from the DataFrame and the tab's account_id.
                 filtered_df = self.all_transactions_df[
-                    self.all_transactions_df["ACCOUNTNAME"] == account_name_of_tab
+                    self.all_transactions_df["TRANSACTION_ACCOUNTID"] == account_id_of_tab
                 ]
 
                 self._populate_grid_with_dataframe(
