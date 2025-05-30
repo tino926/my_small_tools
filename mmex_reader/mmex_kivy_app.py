@@ -34,7 +34,6 @@ from datetime import timedelta
 kivy.require("2.1.0")  # replace with your Kivy version if needed
 
 
-
 # --- Script Directory ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -60,6 +59,14 @@ DB_FIELD_PAYEE_ID_PK = "PAYEEID"
 DB_FIELD_PAYEE_NAME = "PAYEENAME"
 DB_FIELD_CATEGORY_ID_PK = "CATEGID"
 DB_FIELD_CATEGORY_NAME = "CATEGNAME"
+DB_TABLE_TAGS = "TAG_V1"  # Confirmed table name for tags
+DB_TABLE_TRANSACTION_TAGS = (
+    "TAGLINK_V1"  # Confirmed linking table for transactions and tags
+)
+DB_FIELD_TAG_ID_PK = "TAGID"
+DB_FIELD_TAG_NAME = "TAGNAME"
+DB_FIELD_TRANSTAG_TRANSID_FK = "REFID"  # FK in TAGLINK_V1 to CHECKINGACCOUNT_V1.TRANSID
+DB_FIELD_TRANSTAG_TAGID_FK = "TAGID"  # FK in TAGLINK_V1 to TAG_V1.TAGID
 
 # --- UI Color Constants ---
 DEFAULT_TEXT_COLOR_ON_LIGHT_BG = (0, 0, 0, 1)  # Black text for light backgrounds
@@ -124,17 +131,27 @@ def get_transactions(db_file, start_date_str, end_date_str, account_id=None):
             f"trans.{DB_FIELD_TRANS_NOTES} AS NOTES,",
             f"trans.{DB_FIELD_TRANS_AMOUNT} AS TRANSAMOUNT,",
             f"payee.{DB_FIELD_PAYEE_NAME} AS PAYEENAME,",
-            f"cat.{DB_FIELD_CATEGORY_NAME} AS CATEGNAME",
+            f"cat.{DB_FIELD_CATEGORY_NAME} AS CATEGNAME,",
+            # Subquery to concatenate all tags for a transaction
+            f"""(
+                SELECT GROUP_CONCAT(tag.{DB_FIELD_TAG_NAME}, ', ')
+                FROM {DB_TABLE_TAGS} AS tag
+                JOIN {DB_TABLE_TRANSACTION_TAGS} AS tt ON tag.{DB_FIELD_TAG_ID_PK} = tt.{DB_FIELD_TRANSTAG_TAGID_FK}
+                WHERE tt.{DB_FIELD_TRANSTAG_TRANSID_FK} = trans.{DB_FIELD_TRANS_ID} AND tt.REFTYPE = 'Transaction'
+            ) AS TAGNAMES""",
             f"FROM {DB_TABLE_TRANSACTIONS} AS trans",
             f"LEFT JOIN {DB_TABLE_ACCOUNTS} AS acc ON trans.{DB_FIELD_TRANS_ACCOUNTID_FK} = acc.{DB_FIELD_ACCOUNT_ID_PK}",
             f"LEFT JOIN {DB_TABLE_PAYEES} AS payee ON trans.{DB_FIELD_TRANS_PAYEEID_FK} = payee.{DB_FIELD_PAYEE_ID_PK}",
             f"LEFT JOIN {DB_TABLE_CATEGORIES} AS cat ON trans.{DB_FIELD_TRANS_CATEGID_FK} = cat.{DB_FIELD_CATEGORY_ID_PK}",
-            f"WHERE trans.{DB_FIELD_TRANS_DATE} BETWEEN ? AND ?",
+            f"WHERE trans.{DB_FIELD_TRANS_DATE} < ? AND trans.{DB_FIELD_TRANS_DATE} >= ?",  # Corrected date range logic
         ]
         end_date_str_p1 = (
             datetime.strptime(end_date_str, "%Y-%m-%d") + timedelta(days=1)
         ).strftime("%Y-%m-%d")
-        params = [start_date_str, end_date_str_p1]
+        # Correct order for params based on the SQL:
+        # SQL: ... trans.TRANSDATE < ? (upper bound, end_date_str_p1)
+        #          AND trans.TRANSDATE >= ? (lower bound, start_date_str) ...
+        params = [end_date_str_p1, start_date_str]
         if (
             account_id is not None
         ):  # Add condition to filter by account ID in the SQL query if provided.
@@ -189,7 +206,9 @@ class AccountTabContent(BoxLayout):
         self.add_widget(self.results_label)
 
         self.scroll_view = ScrollView()
-        self.results_grid = GridLayout(cols=6, size_hint_y=None, spacing=2)
+        self.results_grid = GridLayout(
+            cols=7, size_hint_y=None, spacing=2
+        )  # Increased cols
         self.results_grid.bind(minimum_height=self.results_grid.setter("height"))
         self.scroll_view.add_widget(self.results_grid)
         self.add_widget(self.scroll_view)
@@ -204,7 +223,7 @@ class MMEXAppLayout(BoxLayout):
         self.padding = [10, 10, 10, 10]
         self.spacing = 10
         self.all_transactions_df = None  # Store the globally queried DataFrame
-        self.db_file_path = load_db_path() # Load DB path once
+        self.db_file_path = load_db_path()  # Load DB path once
 
         # --- Database Path Display ---
         self.db_path_label = Label(
@@ -244,7 +263,9 @@ class MMEXAppLayout(BoxLayout):
         self.end_date_input = TextInput(
             text=datetime.now().strftime("%Y-%m-%d"), multiline=False
         )
-        self.end_date_input.bind(on_text_validate=self.trigger_global_query_on_date_change)
+        self.end_date_input.bind(
+            on_text_validate=self.trigger_global_query_on_date_change
+        )
         date_input_layout.add_widget(self.end_date_input)
         self.add_widget(date_input_layout)
 
@@ -272,7 +293,7 @@ class MMEXAppLayout(BoxLayout):
         self.add_widget(exit_button_layout)
 
         # Automatically load data on startup
-        self.run_global_query(None) # Pass None as instance since no button is pressed
+        self.run_global_query(None)  # Pass None as instance since no button is pressed
 
     def _create_all_transactions_tab(self):
         self.all_transactions_tab = TabbedPanelHeader(
@@ -289,7 +310,9 @@ class MMEXAppLayout(BoxLayout):
         all_trans_content.add_widget(self.all_transactions_status_label)
 
         scroll_view_all = ScrollView()
-        self.all_transactions_grid = GridLayout(cols=6, size_hint_y=None, spacing=2)
+        self.all_transactions_grid = GridLayout(
+            cols=7, size_hint_y=None, spacing=2
+        )  # Increased cols
         self.all_transactions_grid.bind(
             minimum_height=self.all_transactions_grid.setter("height")
         )
@@ -352,8 +375,16 @@ class MMEXAppLayout(BoxLayout):
                 status_label_widget.text = f"{status_message_prefix} No records found."
             return
 
-        target_grid.cols = 6
-        headers = ["Date", "Account", "Payee", "Category", "Notes", "Amount"]
+        target_grid.cols = 7  # Updated column count
+        headers = [
+            "Date",
+            "Account",
+            "Payee",
+            "Category",
+            "Notes",
+            "Amount",
+            "Tags",
+        ]  # Added "Tags" header
         for header_text in headers:
             header_label = Label(
                 text=f"[b]{header_text}[/b]",
@@ -381,6 +412,9 @@ class MMEXAppLayout(BoxLayout):
                 str(row["CATEGNAME"]) if pd.notna(row["CATEGNAME"]) else "",
                 str(row["NOTES"]) if pd.notna(row["NOTES"]) else "",
                 str(row["TRANSAMOUNT"]),
+                str(row["TAGNAMES"])
+                if pd.notna(row["TAGNAMES"])
+                else "",  # Added Tags data
             ]
             for item in row_data:
                 cell_label = Label(
@@ -414,7 +448,11 @@ class MMEXAppLayout(BoxLayout):
 
         # Fetch ALL transactions for the date range (account_id=None)
         error_message, df = get_transactions(
-            self.db_file_path, start_date, end_date, account_id=None
+            self.db_file_path,
+            start_date,
+            end_date,
+            account_id=None,
+            # query_tags=True # Potentially add a flag if tag querying is optional
         )
 
         self.all_transactions_df = None  # Reset before assigning
@@ -429,6 +467,7 @@ class MMEXAppLayout(BoxLayout):
                     self.all_transactions_grid, None, None
                 )
             else:
+                print(f"Error fetching transactions: {error_message}")
                 self.show_popup("Global Query Error", error_message)
                 self.all_transactions_status_label.text = (
                     "Global Query failed. See popup."
@@ -589,6 +628,7 @@ if __name__ == "__main__":
     print("--- MMEX Database Schema Configuration ---")
     for name, value in globals().copy().items():
         if name.startswith("DB_TABLE_") or name.startswith("DB_FIELD_"):
+            # print(f"Global var: {name} = {value}")
             print(f"{name}: {value}")
     print("----------------------------------------")
 
