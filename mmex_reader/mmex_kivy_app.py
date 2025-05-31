@@ -55,6 +55,7 @@ DB_FIELD_TRANS_PAYEEID_FK = "PAYEEID"
 DB_FIELD_TRANS_CATEGID_FK = "CATEGID"
 DB_FIELD_ACCOUNT_ID_PK = "ACCOUNTID"
 DB_FIELD_ACCOUNT_NAME = "ACCOUNTNAME"
+DB_FIELD_ACCOUNT_INITIAL_BALANCE = "INITIALBAL"  # Initial balance for an account
 DB_FIELD_PAYEE_ID_PK = "PAYEEID"
 DB_FIELD_PAYEE_NAME = "PAYEENAME"
 DB_FIELD_CATEGORY_ID_PK = "CATEGID"
@@ -88,7 +89,8 @@ def get_all_accounts(db_file):
         conn = sqlite3.connect(db_file)
         query = (
             f"SELECT {DB_FIELD_ACCOUNT_ID_PK} AS ACCOUNTID, "
-            f"{DB_FIELD_ACCOUNT_NAME} AS ACCOUNTNAME "
+            f"{DB_FIELD_ACCOUNT_NAME} AS ACCOUNTNAME, "
+            f"{DB_FIELD_ACCOUNT_INITIAL_BALANCE} AS INITIALBAL "
             f"FROM {DB_TABLE_ACCOUNTS} ORDER BY {DB_FIELD_ACCOUNT_NAME} ASC;"
         )
         df = pd.read_sql_query(query, conn)
@@ -179,28 +181,78 @@ def get_transactions(db_file, start_date_str, end_date_str, account_id=None):
             conn.close()
 
 
+def get_balance_as_of_date(db_file, account_id, initial_balance, end_date_str):
+    """
+    Calculates the balance for an account as of a specific end date.
+    The balance is initial_balance + sum of transactions up to and including end_date_str.
+    """
+    conn = None
+    try:
+        # Validate end_date_str format
+        datetime.strptime(end_date_str, "%Y-%m-%d")
+
+        # Calculate end_date + 1 day for query condition (TRANSDATE < end_date_plus_one_day)
+        end_date_str_p1 = (
+            datetime.strptime(end_date_str, "%Y-%m-%d") + timedelta(days=1)
+        ).strftime("%Y-%m-%d")
+
+        conn = sqlite3.connect(db_file)
+        query = f"""
+            SELECT SUM({DB_FIELD_TRANS_AMOUNT})
+            FROM {DB_TABLE_TRANSACTIONS}
+            WHERE {DB_FIELD_TRANS_ACCOUNTID_FK} = ?
+            AND {DB_FIELD_TRANS_DATE} < ?
+        """
+        cursor = conn.cursor()
+        cursor.execute(query, (account_id, end_date_str_p1))
+        result = cursor.fetchone()
+
+        sum_transactions = result[0] if result and result[0] is not None else 0.0
+        balance = float(initial_balance) + float(sum_transactions)
+        return None, balance
+    except sqlite3.Error as e:
+        return f"Database error calculating balance: {e}", None
+    except ValueError: # Catches strptime error
+        return f"Invalid date format for balance calculation: {end_date_str}", None
+    except Exception as e:
+        return f"Unexpected error calculating balance: {e}", None
+    finally:
+        if conn:
+            conn.close()
+
+
 class AccountTabContent(BoxLayout):
     """Content for each account tab. Now primarily for displaying filtered data."""
 
     account_id = ObjectProperty(None)
     account_name = StringProperty("")
-    # No app_layout reference needed if filtering happens in MMEXAppLayout
+    initial_balance = ObjectProperty(0.0)
 
-    def __init__(self, account_id, account_name, **kwargs):
+    def __init__(self, account_id, account_name, initial_balance, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = [5, 5, 5, 5]
         self.spacing = 5
         self.account_id = account_id
         self.account_name = account_name
+        self.initial_balance = initial_balance
 
-        self.results_label = Label(
-            text=f"Transactions for {self.account_name}",  # Initial message
-            size_hint_y=None,
-            height=30,
+        # Layout for title and balance
+        header_layout = BoxLayout(size_hint_y=None, height=30, spacing=10)
+        self.results_label = Label( # This is the status label for transactions
+            text=f"Transactions for {self.account_name}",
+            size_hint_x=0.7,
             color=DEFAULT_TEXT_COLOR_ON_DARK_BG,
         )
-        self.add_widget(self.results_label)
+        header_layout.add_widget(self.results_label)
+
+        self.balance_label = Label(
+            text="Balance: N/A",
+            size_hint_x=0.3,
+            color=DEFAULT_TEXT_COLOR_ON_DARK_BG,
+        )
+        header_layout.add_widget(self.balance_label)
+        self.add_widget(header_layout)
 
         self.scroll_view = ScrollView()
         self.results_grid = GridLayout(
@@ -336,6 +388,19 @@ class MMEXAppLayout(BoxLayout):
             for index, row in accounts_df.iterrows():
                 account_id = row["ACCOUNTID"]
                 account_name = str(row["ACCOUNTNAME"])
+                
+                # Get initial balance robustly
+                initial_balance = 0.0
+                if DB_FIELD_ACCOUNT_INITIAL_BALANCE in accounts_df.columns:
+                    raw_val = row[DB_FIELD_ACCOUNT_INITIAL_BALANCE]
+                    if pd.notna(raw_val):
+                        try:
+                            initial_balance = float(raw_val)
+                        except ValueError:
+                            print(f"Warning: Could not convert INITIALBAL '{raw_val}' to float for account {account_name}. Defaulting to 0.0.")
+                else:
+                    print(f"Warning: '{DB_FIELD_ACCOUNT_INITIAL_BALANCE}' column not found in {DB_TABLE_ACCOUNTS}. Account balances might assume a zero initial balance.")
+
                 # Use TabbedPanelHeader for consistency if you want to style headers
                 tab_header = TabbedPanelHeader(
                     text=account_name[:25]
@@ -343,10 +408,10 @@ class MMEXAppLayout(BoxLayout):
                 # Store account_id and name directly on the header for easy access
                 tab_header.account_id = account_id
                 tab_header.account_name_full = account_name
-
+                # tab_header.initial_balance = initial_balance # Can store here if needed elsewhere
                 # The content will be an AccountTabContent instance
                 tab_content = AccountTabContent(
-                    account_id=account_id, account_name=account_name
+                    account_id=account_id, account_name=account_name, initial_balance=initial_balance
                 )
                 tab_header.content = tab_content
                 self.tab_panel.add_widget(tab_header)
@@ -528,6 +593,27 @@ class MMEXAppLayout(BoxLayout):
             # An account-specific tab is selected
             account_id_of_tab = tab_content_widget.account_id
             account_name_of_tab = tab_content_widget.account_name
+            initial_balance_of_tab = tab_content_widget.initial_balance
+
+            end_date_for_balance = self.end_date_input.text
+
+            # Calculate and display balance
+            if self.db_file_path:
+                err_bal, balance = get_balance_as_of_date(
+                    self.db_file_path,
+                    account_id_of_tab,
+                    initial_balance_of_tab,
+                    end_date_for_balance
+                )
+                if err_bal:
+                    tab_content_widget.balance_label.text = "Balance: Error"
+                    print(f"Error calculating balance for {account_name_of_tab}: {err_bal}")
+                elif balance is not None:
+                    tab_content_widget.balance_label.text = f"Balance: {balance:,.0f}"
+                else:
+                    tab_content_widget.balance_label.text = "Balance: N/A"
+            else:
+                tab_content_widget.balance_label.text = "Balance: DB N/A"
 
             if self.all_transactions_df is None:
                 tab_content_widget.results_label.text = (
