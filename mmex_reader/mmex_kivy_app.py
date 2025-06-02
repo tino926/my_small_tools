@@ -22,6 +22,7 @@ from kivy.uix.tabbedpanel import (
 from kivy.properties import ObjectProperty, StringProperty
 from kivy.uix.widget import Widget  # For spacer
 from kivy.lang import Builder
+from kivy.graphics import Color, Rectangle # Added for custom background
 import os
 
 import sqlite3
@@ -71,7 +72,8 @@ DB_FIELD_TRANSTAG_TAGID_FK = "TAGID"  # FK in TAGLINK_V1 to TAG_V1.TAGID
 
 # --- UI Color Constants ---
 DEFAULT_TEXT_COLOR_ON_LIGHT_BG = (0, 0, 0, 1)  # Black text for light backgrounds
-DEFAULT_TEXT_COLOR_ON_DARK_BG = (1, 1, 1, 1)  # White text for dark backgrounds
+DEFAULT_TEXT_COLOR_ON_DARK_BG = (1, 1, 1, 1)   # White text for dark backgrounds
+GRID_BACKGROUND_GREEN = (0.95, 0.95, 0.95, 1) # A moderately dark green for grid backgrounds
 
 
 # --- Database Functions ---
@@ -259,6 +261,15 @@ class AccountTabContent(BoxLayout):
             cols=7, size_hint_y=None, spacing=2
         )  # Increased cols
         self.results_grid.bind(minimum_height=self.results_grid.setter("height"))
+
+        with self.results_grid.canvas.before:
+            Color(*GRID_BACKGROUND_GREEN)
+            self.results_grid_bg = Rectangle(size=self.results_grid.size, pos=self.results_grid.pos)
+
+        def update_results_grid_bg_rect(instance, value):
+            self.results_grid_bg.pos = instance.pos
+            self.results_grid_bg.size = instance.size
+        self.results_grid.bind(pos=update_results_grid_bg_rect, size=update_results_grid_bg_rect)
         self.scroll_view.add_widget(self.results_grid)
         self.add_widget(self.scroll_view)
 
@@ -365,6 +376,16 @@ class MMEXAppLayout(BoxLayout):
         self.all_transactions_grid.bind(
             minimum_height=self.all_transactions_grid.setter("height")
         )
+
+        with self.all_transactions_grid.canvas.before:
+            Color(*GRID_BACKGROUND_GREEN)
+            self.all_transactions_grid_bg = Rectangle(size=self.all_transactions_grid.size, pos=self.all_transactions_grid.pos)
+
+        def update_all_transactions_grid_bg_rect(instance, value):
+            self.all_transactions_grid_bg.pos = instance.pos
+            self.all_transactions_grid_bg.size = instance.size
+        self.all_transactions_grid.bind(pos=update_all_transactions_grid_bg_rect, size=update_all_transactions_grid_bg_rect)
+
         scroll_view_all.add_widget(self.all_transactions_grid)
         all_trans_content.add_widget(scroll_view_all)
 
@@ -452,7 +473,7 @@ class MMEXAppLayout(BoxLayout):
                 markup=True,
                 size_hint_y=None,
                 height=40,
-                color=DEFAULT_TEXT_COLOR_ON_DARK_BG,
+                color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG,
                 halign="left",
                 valign="middle",
             )
@@ -482,7 +503,7 @@ class MMEXAppLayout(BoxLayout):
                     text=item,
                     size_hint_y=None,
                     height=30,
-                    color=DEFAULT_TEXT_COLOR_ON_DARK_BG,
+                    color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG,
                     halign="left",
                     valign="middle",
                 )
@@ -660,7 +681,7 @@ class MMEXKivyApp(App):
     """The main Kivy application class."""
 
     def build(self):
-        Window.clearcolor = (0.9, 0.9, 0.9, 1)
+        Window.clearcolor = (0.99, 0.99, 0.99, 1)
         actual_font_path = UNICODE_FONT_PATH
         if not os.path.isabs(actual_font_path):
             actual_font_path = os.path.join(SCRIPT_DIR, actual_font_path)
