@@ -519,6 +519,16 @@ class MMEXAppLayout(BoxLayout):
         start_date = self.start_date_input.text
         end_date = self.end_date_input.text
 
+        # Validate dates early for better UX
+        try:
+            datetime.strptime(start_date, "%Y-%m-%d")
+            datetime.strptime(end_date, "%Y-%m-%d")
+        except ValueError:
+            self.show_popup("Date Error", 
+                            f"Invalid date format. Please use YYYY-MM-DD.\nStart: {start_date}, End: {end_date}")
+            self.all_transactions_status_label.text = "Error: Invalid date format."
+            return
+
         if not self.db_file_path:
             self.show_popup("Error", "Database path not configured in .env file.")
             self.all_transactions_status_label.text = "DB Error. Configure .env file."
@@ -580,73 +590,6 @@ class MMEXAppLayout(BoxLayout):
         # The 'instance' is the TextInput widget that triggered the event.
         self.run_global_query(instance)
 
-    def _handle_all_transactions_tab_switch(self):
-        """Handles logic when 'All Transactions' tab is selected."""
-        if self.all_transactions_df is not None:
-            self._populate_grid_with_dataframe(
-                self.all_transactions_grid,
-                self.all_transactions_df,
-                self.all_transactions_status_label,
-                "All Transactions:",
-            )
-        else:
-            self._populate_grid_with_dataframe(
-                self.all_transactions_grid,
-                None,
-                self.all_transactions_status_label,
-                "All Transactions:",
-            )
-            if not self.db_path_label.text.endswith(
-                "Not Set"
-            ):  # Only show if DB is set
-                self.all_transactions_status_label.text = (
-                    "Perform a global query to see all transactions."
-                )
-
-    def _handle_account_tab_switch(self, tab_content_widget):
-        """Handles logic when an account-specific tab is selected."""
-        account_id_of_tab = tab_content_widget.account_id
-        account_name_of_tab = tab_content_widget.account_name
-        initial_balance_of_tab = tab_content_widget.initial_balance
-        end_date_for_balance = self.end_date_input.text
-
-        # Calculate and display balance
-        if self.db_file_path:
-            err_bal, balance = get_balance_as_of_date(
-                self.db_file_path,
-                account_id_of_tab,
-                initial_balance_of_tab,
-                end_date_for_balance
-            )
-            if err_bal:
-                tab_content_widget.balance_label.text = "Balance: Error"
-                print(f"Error calculating balance for {account_name_of_tab}: {err_bal}")
-            elif balance is not None:
-                tab_content_widget.balance_label.text = f"Balance: {balance:,.0f}" # Using f-string for formatting
-            else:
-                tab_content_widget.balance_label.text = "Balance: N/A"
-        else:
-            tab_content_widget.balance_label.text = "Balance: DB N/A"
-
-        if self.all_transactions_df is None:
-            tab_content_widget.results_label.text = (
-                f"Perform a global query first for {account_name_of_tab}."
-            )
-            self._populate_grid_with_dataframe(
-                tab_content_widget.results_grid, None, None
-            )
-        else:
-            # Filter the global DataFrame for this specific account tab.
-            filtered_df = self.all_transactions_df[
-                self.all_transactions_df["TRANSACTION_ACCOUNTID"] == account_id_of_tab
-            ]
-            self._populate_grid_with_dataframe(
-                tab_content_widget.results_grid,
-                filtered_df,
-                tab_content_widget.results_label,
-                f"{account_name_of_tab}:",
-            )
-
     def on_tab_switch(self, tab_panel_instance, current_tab_header):
         """Called when the current tab changes."""
         if not current_tab_header or not hasattr(current_tab_header, "content"):
@@ -655,13 +598,76 @@ class MMEXAppLayout(BoxLayout):
         tab_content_widget = current_tab_header.content
 
         if current_tab_header == self.all_transactions_tab:
-            self._handle_all_transactions_tab_switch()
+            # "All Transactions" tab is selected, ensure its grid is populated if data exists
+            if self.all_transactions_df is not None:
+                self._populate_grid_with_dataframe(
+                    self.all_transactions_grid,
+                    self.all_transactions_df,
+                    self.all_transactions_status_label,
+                    "All Transactions:",
+                )
+            else:
+                self._populate_grid_with_dataframe(
+                    self.all_transactions_grid,
+                    None,
+                    self.all_transactions_status_label,
+                    "All Transactions:",
+                )
+                if not self.db_path_label.text.endswith(
+                    "Not Set"
+                ):  # Only show if DB is set
+                    self.all_transactions_status_label.text = (
+                        "Perform a global query to see all transactions."
+                    )
+
         elif isinstance(tab_content_widget, AccountTabContent):
-            self._handle_account_tab_switch(tab_content_widget)
+            # An account-specific tab is selected
+            account_id_of_tab = tab_content_widget.account_id
+            account_name_of_tab = tab_content_widget.account_name
+            initial_balance_of_tab = tab_content_widget.initial_balance
+
+            end_date_for_balance = self.end_date_input.text
+
+            # Calculate and display balance
+            if self.db_file_path:
+                err_bal, balance = get_balance_as_of_date(
+                    self.db_file_path,
+                    account_id_of_tab,
+                    initial_balance_of_tab,
+                    end_date_for_balance
+                )
+                if err_bal:
+                    tab_content_widget.balance_label.text = "Balance: Error"
+                    print(f"Error calculating balance for {account_name_of_tab}: {err_bal}")
+                elif balance is not None:
+                    tab_content_widget.balance_label.text = f"Balance: {balance:,.0f}"
+                else:
+                    tab_content_widget.balance_label.text = "Balance: N/A"
+            else:
+                tab_content_widget.balance_label.text = "Balance: DB N/A"
+
+            if self.all_transactions_df is None:
+                tab_content_widget.results_label.text = (
+                    f"Perform a global query first for {account_name_of_tab}."
+                )
+                self._populate_grid_with_dataframe(
+                    tab_content_widget.results_grid, None, None
+                )
+            else:
+                # Filter the global DataFrame for this specific account tab.
+                # Filter using TRANSACTION_ACCOUNTID from the DataFrame and the tab's account_id.
+                filtered_df = self.all_transactions_df[
+                    self.all_transactions_df["TRANSACTION_ACCOUNTID"] == account_id_of_tab
+                ]
+
+                self._populate_grid_with_dataframe(
+                    tab_content_widget.results_grid,
+                    filtered_df,
+                    tab_content_widget.results_label,
+                    f"{account_name_of_tab}:",
+                )
         else:
             # Some other type of tab content, or content not yet set
-            # Consider logging or printing if an unexpected tab type is encountered
-            # print(f"Switched to an unhandled tab type: {current_tab_header.text if hasattr(current_tab_header, 'text') else 'Unknown Tab'}")
             pass
 
     def show_popup(self, title, message):
