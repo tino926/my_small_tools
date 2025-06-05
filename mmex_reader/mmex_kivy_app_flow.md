@@ -65,29 +65,36 @@ MoneyManagerEx (MMEX) 資料庫 (`.mmb` 檔案) 中的財務交易記錄。
   - **建構 SQL 查詢**:
     - **主要查詢 (嘗試包含標籤)**:
       - `SELECT` 交易日期 (`TRANSDATE`)、帳戶名稱 (`ACCOUNTNAME`)、收款人 
-        (`PAYEENAME`)、分類 (`CATEGNAME`)、備註 (`NOTES`)、金額 (`TRANSAMOUNT`) 
-        以及使用 `GROUP_CONCAT(DISTINCT tag.TAGNAME)` 彙總的標籤 (`TAGS`)。
+        (`PAYEENAME`)、分類 (`CATEGNAME`)、備註 (`NOTES`)、金額 (`TRANSAMOUNT`)、
+        交易的帳戶ID (`TRANSACTION_ACCOUNTID`) 以及使用 `GROUP_CONCAT(tag.TAGNAME)` 
+        彙總的標籤 (`TAGNAMES`)。
       - `FROM CHECKINGACCOUNT_V1` (交易表)。
       - `LEFT JOIN` `ACCOUNTLIST_V1` (帳戶表)、`PAYEE_V1` (收款人表)、
         `CATEGORY_V1` (分類表)。
-      - `LEFT JOIN CHECKINGACCOUNT_TAGS_V1` (交易-標籤對應表) 和 `TAGS_V1` (標籤
-        表) 來獲取標籤資訊。
+      - `LEFT JOIN TAG_V1` (標籤表) 和 `TAGLINK_V1` (交易-標籤對應表，並篩選 `REFTYPE = 'Transaction'`) 
+        來獲取標籤資訊。
       - `WHERE TRANSDATE` 在指定的開始和結束日期之間 (結束日期會加一天以包含當
         天)。
-      - 如果提供了 `account_id`，則增加 `AND ACCOUNTID = ?` 的篩選條件。
+      - 如果提供了 `account_id`，則增加 `AND trans.ACCOUNTID = ?` 的篩選條件。
       - `GROUP BY trans.TRANSID` 以確保每個交易只有一列，並正確彙總標籤。
       - `ORDER BY TRANSDATE ASC, TRANSID ASC`。
     - **備援查詢 (不含標籤)**:
-      - 如果上述包含標籤的查詢因為找不到 `CHECKINGACCOUNT_TAGS_V1` 或 `TAGS_V1` 
-        表格而失敗 (捕獲 `sqlite3.OperationalError` 
-        或 `pd.io.sql.DatabaseError`)：
+      - 如果上述包含標籤的查詢因為找不到標籤相關表格 (例如 `TAG_V1` 或 `TAGLINK_V1`) 
+        而失敗 (捕獲 `sqlite3.OperationalError` 或 `pd.io.sql.DatabaseError`)：
         - 會印出警告訊息。
         - 設定 `tags_column_present = False`。
         - 執行一個不包含標籤相關 `SELECT`、`JOIN` 或 `GROUP BY` 的簡化版 SQL 查
           詢。
   - 使用 `pd.read_sql_query()` 執行查詢並將結果載入 DataFrame。
   - 回傳錯誤訊息 (如果有的話)、包含交易資料的 DataFrame，以及一個布林值 
-    `tags_column_present` 指示標籤欄位是否成功查詢。
+    `tags_column_present` 指示標籤欄位是否成功查詢 (此布林值在實際程式碼中並未直接回傳，
+    而是透過 DataFrame 是否包含 'TAGNAMES' 欄位來隱含判斷)。
+
+- **`get_balance_as_of_date(db_file, account_id, initial_balance, end_date_str)`**:
+  - 計算特定帳戶在指定結束日期前的餘額。
+  - 連接到資料庫，查詢該帳戶在結束日期之前所有交易的總金額。
+  - 餘額 = 初始餘額 + 交易總額。
+  - 回傳錯誤訊息 (如果有的話) 和計算出的餘額。
 
 ### 4. 全域查詢邏輯 (`run_global_query`)
 
@@ -103,7 +110,7 @@ MoneyManagerEx (MMEX) 資料庫 (`.mmb` 檔案) 中的財務交易記錄。
   - 如果查詢成功且有資料：
     - 呼叫 `_populate_grid_with_dataframe()` 將 `self.all_transactions_df` 的內
       容填充到「所有交易」分頁的網格中。
-  - 如果查詢失敗或沒有資料，顯示相應的錯誤或提示訊息。
+  - 如果查詢失敗或沒有資料，顯示相應的錯誤或提示訊息，並確保 `self.all_transactions_df` 為 `None`。
   - 呼叫 `self.on_tab_switch()` 以刷新目前活動分頁的內容 (因為全域資料已更新)。
 
 ### 5. 分頁管理與切換
@@ -120,10 +127,11 @@ MoneyManagerEx (MMEX) 資料庫 (`.mmb` 檔案) 中的財務交易記錄。
     - 使用 `self.all_transactions_df` 和 `self.tags_available_in_current_df` 重
       新填充其網格 (`self.all_transactions_grid`)。
   - **如果切換到某個帳戶專用分頁**:
+    - 獲取該分頁對應的帳戶 ID、帳戶名稱和初始餘額。
+    - 呼叫 `get_balance_as_of_date()` 計算並更新該帳戶的餘額顯示。
     - 檢查 `self.all_transactions_df` 是否存在 (即全域查詢是否已執行)。
-    - 如果存在，則從 `self.all_transactions_df` 中篩選出屬於該帳戶的交易記錄 (目
-      前是基於 `ACCOUNTNAME` 進行篩選)。
-    - 使用篩選後的 DataFrame 和 `self.tags_available_in_current_df` 填充該帳戶分
+    - 如果存在，則從 `self.all_transactions_df` 中篩選出屬於該帳戶的交易記錄 (基於 `TRANSACTION_ACCOUNTID` 與分頁的 `account_id` 進行比較)。
+    - 使用篩選後的 DataFrame 填充該帳戶分
       頁的網格。
     - 如果 `self.all_transactions_df` 不存在，提示使用者先執行全域查詢。
 
@@ -140,14 +148,12 @@ MoneyManagerEx (MMEX) 資料庫 (`.mmb` 檔案) 中的財務交易記錄。
   - 清除 `target_grid` 中的所有現有元件。
   - 如果 `df` 為空或 `None`，顯示「無資料」訊息。
   - **動態設定欄數和表頭**:
-    - 如果 `tags_available` 為 `True` 且 DataFrame 中存在 "TAGS" 欄，則設定網格
-      為 7 欄，表頭包含 "Tags"。
-    - 否則，設定網格為 6 欄，表頭不含 "Tags"。
+    - 固定設定網格為 7 欄。
+    - 表頭固定為："Date", "Account", "Payee", "Category", "Notes", "Amount", "Tags"。
   - 為每個表頭文字建立 `Label` 並加入網格。
   - 遍歷 DataFrame 的每一列：
     - 格式化日期 (移除時間部分)。
-    - 建立包含該行各欄位資料的列表 (根據 `tags_available` 決定是否包含標籤資
-      料)。
+    - 建立包含該行各欄位資料的列表 (如果 'TAGNAMES' 欄位不存在或為空，則標籤資料為空字串)。
     - 為列表中的每個項目建立 `Label` 並加入網格。
   - 更新 `status_label_widget` 的文字，顯示找到的記錄數量或「無記錄」訊息。
 
