@@ -1,4 +1,4 @@
-# DOI Helper - Your Speedy Paper Access Pal!
+# DOI Helper - Your Speedy Paper Access Pal
 
 Hey research warriors! DOI Helper is a super handy bookmarklet that sniffs out
 those Digital Object Identifiers (DOIs) on whatever page you're on. Then, it
@@ -30,7 +30,7 @@ You'll then get a couple of quick questions:
 
 ---
 
-## So, How Does It Do That?
+## So, How Does It Do That
 
 This little script is pretty smart about finding DOIs. It looks in a few places:
 
@@ -43,7 +43,7 @@ whisks you away to your chosen service with the DOI you picked.
 
 ---
 
-## Want to Tinker?
+## Want to Tinker
 
 The full, more readable source code is right there in `bookmarklet.js` if
 you're curious or want to play around.
