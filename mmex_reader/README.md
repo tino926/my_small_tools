@@ -29,11 +29,13 @@ transactions from a MoneyManagerEx (MMEX) `.mmb` database file.
 1. **Clone the repository (or ensure you have the `my_small_tools` project).**
 
 2. **Install Dependencies:**
-   Navigate to the root directory of the `my_small_tools` project (or where your 
-   Python environment is managed) and install the required Python packages:
+   Navigate to the root directory of the `my_small_tools` project (or where 
+   your Python environment is managed) and install the required Python packages:
+
    ```bash
    pip install kivy pandas python-dotenv
    ```
+
    *(Note: Kivy installation can sometimes be more involved depending on your 
    operating system. Please refer to the official Kivy installation guide if you 
    encounter issues.)*
@@ -54,21 +56,26 @@ transactions from a MoneyManagerEx (MMEX) `.mmb` database file.
      4. If you use a different font file name or location, update the 
         `UNICODE_FONT_PATH` variable at the top of `mmex_kivy_app.py`.
 
-1. **Configure Database Path:**
+4. **Configure Database Path:**
    - Create a file named `.env` in the `mmex_reader` directory (i.e., 
      `mmex_reader/.env`).
    - Add the following line to the `.env` file, replacing 
      `path/to/your/database.mmb` with the actual absolute path to your 
      MoneyManagerEx `.mmb` database file:
-     ```
+
+     ```bash
      DB_FILE_PATH="path/to/your/database.mmb"
      ```
+
      **Example:**
-     ```
+
+     ```bash
      DB_FILE_PATH="C:/Users/YourUser/Documents/Finances/mymoney.mmb"
      ```
+
      or on Linux/macOS:
-     ```
+
+     ```bash
      DB_FILE_PATH="/home/youruser/Documents/Finances/mymoney.mmb"
      ```
 
