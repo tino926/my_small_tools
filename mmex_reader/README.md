@@ -37,8 +37,8 @@ transactions from a MoneyManagerEx (MMEX) `.mmb` database file.
    ```
 
    *(Note: Kivy installation can sometimes be more involved depending on your 
-   operating system. Please refer to the official Kivy installation guide if you 
-   encounter issues.)*
+   operating system. Please refer to the official Kivy installation guide if 
+   you encounter issues.)*
 
 3. **Prepare the Font:**
    - This application requires a font file capable of displaying the characters 
@@ -82,10 +82,13 @@ transactions from a MoneyManagerEx (MMEX) `.mmb` database file.
 ## Running the Application
 
 1. Navigate to the `mmex_reader` directory in your terminal:
+
    ```bash
    cd path/to/my_small_tools/mmex_reader
    ```
+
 2. Run the Python script:
+
    ```bash
    python mmex_kivy_app.py
    ```
@@ -96,32 +99,36 @@ This directory also includes `mmex_reader.py`, a command-line script for basic
 interactions with the MMEX database.
 
 **Features:**
+
 - Connects to the database specified in `.env`.
 - Lists all database tables.
 - Prints sample data from the account list table.
-- Queries and prints transactions to the console based on a hardcoded date range 
-  within the script.
+- Queries and prints transactions to the console based on a hardcoded date 
+  range within the script.
 
 **Running `mmex_reader.py`:**
+
 1. Ensure Python dependencies (`pandas`, `python-dotenv`) are installed and the 
    `.env` file is configured as described in the main **Setup** section.
 2. Navigate to the `mmex_reader` directory.
 3. Execute:
+
    ```bash
    python mmex_reader.py
    ```
+
    *Note: To change the query date range for this script, you must edit the 
    `START_DATE_STR` and `END_DATE_STR` variables directly in `mmex_reader.py`.*
 
 ## MMEX Database Schema
 
 Both `mmex_kivy_app.py` (the GUI application) and `mmex_reader.py` (the 
-command-line utility) interact with the MMEX database and make assumptions about 
-its schema (table and field names).
+command-line utility) interact with the MMEX database and make assumptions 
+about its schema (table and field names).
 
 - **`mmex_kivy_app.py`**: Uses configurable constants defined at the top of the 
-  script (e.g., `DB_TABLE_TRANSACTIONS`, `DB_FIELD_TRANS_DATE`) to refer to MMEX 
-  database table and field names.
+  script (e.g., `DB_TABLE_TRANSACTIONS`, `DB_FIELD_TRANS_DATE`) to refer to 
+  MMEX database table and field names.
 - **`mmex_reader.py`**: Currently uses hardcoded table and field names (e.g., 
   `CHECKINGACCOUNT_V1`, `TRANSDATE`) directly within its SQL query strings.
 
