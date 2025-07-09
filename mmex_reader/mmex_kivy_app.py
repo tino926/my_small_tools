@@ -296,8 +296,8 @@ class MMEXAppLayout(BoxLayout):
         )
         self.add_widget(self.db_path_label)
 
-        # --- Global Date Inputs ---
-        date_input_layout = GridLayout(cols=4, size_hint_y=None, height=40, spacing=10)
+        # --- Global Date Inputs and Refresh Button ---
+        date_input_layout = GridLayout(cols=5, size_hint_y=None, height=40, spacing=10)
         date_input_layout.add_widget(
             Label(text="Start Date:", color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG)
         )
@@ -327,6 +327,15 @@ class MMEXAppLayout(BoxLayout):
             on_text_validate=self.trigger_global_query_on_date_change
         )
         date_input_layout.add_widget(self.end_date_input)
+        
+        # Add refresh button
+        refresh_button = Button(
+            text="Refresh",
+            size_hint_x=None,
+            width=100,
+            on_press=self.run_global_query
+        )
+        date_input_layout.add_widget(refresh_button)
         self.add_widget(date_input_layout)
 
         # --- Tabbed Panel for Accounts ---
