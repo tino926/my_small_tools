@@ -336,6 +336,15 @@ class MMEXAppLayout(BoxLayout):
             on_press=self.run_global_query
         )
         date_input_layout.add_widget(refresh_button)
+        
+        # Add refresh button
+        refresh_button = Button(
+            text="Refresh",
+            size_hint_x=None,
+            width=100,
+            on_press=self.run_global_query
+        )
+        date_input_layout.add_widget(refresh_button)
         self.add_widget(date_input_layout)
 
         # --- Tabbed Panel for Accounts ---
