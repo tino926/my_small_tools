@@ -601,11 +601,13 @@ class MMEXAppLayout(BoxLayout):
 
         if df is not None and not df.empty:
             self.all_transactions_df = df
-            
+
             # Check if we have an active search filter
-            search_text = self.search_input.text.strip() if hasattr(self, 'search_input') else ""
+            search_text = (
+                self.search_input.text.strip() if hasattr(self, "search_input") else ""
+            )
             has_search_filter = bool(search_text)
-            
+
             if has_search_filter:
                 # If we have an active search filter, apply it
                 self.apply_search_filter(None)
@@ -860,10 +862,22 @@ class MMEXAppLayout(BoxLayout):
         else:
             # Default to all fields if somehow an invalid option is selected
             mask = (
-                filtered_df["PAYEENAME"].astype(str).str.lower().str.contains(search_text, na=False) |
-                filtered_df["CATEGNAME"].astype(str).str.lower().str.contains(search_text, na=False) |
-                filtered_df["NOTES"].astype(str).str.lower().str.contains(search_text, na=False) |
-                filtered_df["TAGNAMES"].astype(str).str.lower().str.contains(search_text, na=False)
+                filtered_df["PAYEENAME"]
+                .astype(str)
+                .str.lower()
+                .str.contains(search_text, na=False)
+                | filtered_df["CATEGNAME"]
+                .astype(str)
+                .str.lower()
+                .str.contains(search_text, na=False)
+                | filtered_df["NOTES"]
+                .astype(str)
+                .str.lower()
+                .str.contains(search_text, na=False)
+                | filtered_df["TAGNAMES"]
+                .astype(str)
+                .str.lower()
+                .str.contains(search_text, na=False)
             )
         
         # Apply the filter
