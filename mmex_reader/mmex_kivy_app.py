@@ -336,16 +336,32 @@ class MMEXAppLayout(BoxLayout):
             on_press=self.run_global_query
         )
         date_input_layout.add_widget(refresh_button)
-        
-        # Add refresh button
-        refresh_button = Button(
-            text="Refresh",
-            size_hint_x=None,
-            width=100,
-            on_press=self.run_global_query
-        )
-        date_input_layout.add_widget(refresh_button)
         self.add_widget(date_input_layout)
+        
+        # --- Search and Filter Layout ---
+        search_layout = BoxLayout(orientation="horizontal", size_hint_y=None, height=40, spacing=10)
+        
+        # Search input
+        search_layout.add_widget(Label(text="Search:", size_hint_x=None, width=60, color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG))
+        self.search_input = TextInput(multiline=False, hint_text="Enter search text", size_hint_x=0.6)
+        self.search_input.bind(on_text_validate=self.apply_search_filter)
+        search_layout.add_widget(self.search_input)
+        
+        # Filter type selection
+        search_layout.add_widget(Label(text="Filter by:", size_hint_x=None, width=60, color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG))
+        self.filter_type = Button(text="All Fields", size_hint_x=0.3)
+        self.filter_type.bind(on_press=self.show_filter_options)
+        search_layout.add_widget(self.filter_type)
+        
+        # Search button
+        search_button = Button(text="Search", size_hint_x=0.2, on_press=self.apply_search_filter)
+        search_layout.add_widget(search_button)
+        
+        # Clear button
+        clear_button = Button(text="Clear", size_hint_x=0.2, on_press=self.clear_search_filter)
+        search_layout.add_widget(clear_button)
+        
+        self.add_widget(search_layout)
 
         # --- Tabbed Panel for Accounts ---
         self.tab_panel = TabbedPanel(
@@ -585,12 +601,22 @@ class MMEXAppLayout(BoxLayout):
 
         if df is not None and not df.empty:
             self.all_transactions_df = df
-            self._populate_grid_with_dataframe(
-                self.all_transactions_grid,
-                self.all_transactions_df,
-                self.all_transactions_status_label,
-                "All Transactions:",
-            )
+            
+            # Check if we have an active search filter
+            search_text = self.search_input.text.strip() if hasattr(self, 'search_input') else ""
+            has_search_filter = bool(search_text)
+            
+            if has_search_filter:
+                # If we have an active search filter, apply it
+                self.apply_search_filter(None)
+            else:
+                # Otherwise, populate with all data
+                self._populate_grid_with_dataframe(
+                    self.all_transactions_grid,
+                    self.all_transactions_df,
+                    self.all_transactions_status_label,
+                    "All Transactions:",
+                )
         else:
             self.all_transactions_df = None  # Ensure it's None if query returned empty
             self._populate_grid_with_dataframe(
@@ -614,16 +640,26 @@ class MMEXAppLayout(BoxLayout):
             return  # No tab selected or tab has no content widget yet
 
         tab_content_widget = current_tab_header.content
+        
+        # Check if we have an active search filter
+        search_text = self.search_input.text.strip() if hasattr(self, 'search_input') else ""
+        has_search_filter = bool(search_text)
+        filter_type = self.filter_type.text if hasattr(self, 'filter_type') else "All Fields"
 
         if current_tab_header == self.all_transactions_tab:
             # "All Transactions" tab is selected, ensure its grid is populated if data exists
             if self.all_transactions_df is not None:
-                self._populate_grid_with_dataframe(
-                    self.all_transactions_grid,
-                    self.all_transactions_df,
-                    self.all_transactions_status_label,
-                    "All Transactions:",
-                )
+                if has_search_filter:
+                    # Apply the current search filter to the all transactions data
+                    self.apply_search_filter(None)
+                else:
+                    # Show all transactions without filtering
+                    self._populate_grid_with_dataframe(
+                        self.all_transactions_grid,
+                        self.all_transactions_df,
+                        self.all_transactions_status_label,
+                        "All Transactions:",
+                    )
             else:
                 self._populate_grid_with_dataframe(
                     self.all_transactions_grid,
@@ -672,18 +708,59 @@ class MMEXAppLayout(BoxLayout):
                     tab_content_widget.results_grid, None, None
                 )
             else:
-                # Filter the global DataFrame for this specific account tab.
-                # Filter using TRANSACTION_ACCOUNTID from the DataFrame and the tab's account_id.
-                filtered_df = self.all_transactions_df[
-                    self.all_transactions_df["TRANSACTION_ACCOUNTID"] == account_id_of_tab
-                ]
+                if has_search_filter:
+                    # Apply the current search filter to this account's data
+                    filtered_df = self.all_transactions_df.copy()
+                    
+                    # Apply search filter based on selected filter type
+                    if filter_type == "All Fields":
+                        mask = (
+                            filtered_df["PAYEENAME"].astype(str).str.lower().str.contains(search_text.lower(), na=False) |
+                            filtered_df["CATEGNAME"].astype(str).str.lower().str.contains(search_text.lower(), na=False) |
+                            filtered_df["NOTES"].astype(str).str.lower().str.contains(search_text.lower(), na=False) |
+                            filtered_df["TAGNAMES"].astype(str).str.lower().str.contains(search_text.lower(), na=False)
+                        )
+                    elif filter_type == "Payee":
+                        mask = filtered_df["PAYEENAME"].astype(str).str.lower().str.contains(search_text.lower(), na=False)
+                    elif filter_type == "Category":
+                        mask = filtered_df["CATEGNAME"].astype(str).str.lower().str.contains(search_text.lower(), na=False)
+                    elif filter_type == "Notes":
+                        mask = filtered_df["NOTES"].astype(str).str.lower().str.contains(search_text.lower(), na=False)
+                    elif filter_type == "Tags":
+                        mask = filtered_df["TAGNAMES"].astype(str).str.lower().str.contains(search_text.lower(), na=False)
+                    else:
+                        # Default to all fields
+                        mask = (
+                            filtered_df["PAYEENAME"].astype(str).str.lower().str.contains(search_text.lower(), na=False) |
+                            filtered_df["CATEGNAME"].astype(str).str.lower().str.contains(search_text.lower(), na=False) |
+                            filtered_df["NOTES"].astype(str).str.lower().str.contains(search_text.lower(), na=False) |
+                            filtered_df["TAGNAMES"].astype(str).str.lower().str.contains(search_text.lower(), na=False)
+                        )
+                    
+                    # Apply the search filter
+                    filtered_df = filtered_df[mask]
+                    
+                    # Then filter by account ID
+                    account_filtered_df = filtered_df[filtered_df["TRANSACTION_ACCOUNTID"] == account_id_of_tab]
+                    
+                    self._populate_grid_with_dataframe(
+                        tab_content_widget.results_grid,
+                        account_filtered_df,
+                        tab_content_widget.results_label,
+                        f"{account_name_of_tab} (filtered by {filter_type}):",
+                    )
+                else:
+                    # Filter the global DataFrame for this specific account tab without search filtering
+                    filtered_df = self.all_transactions_df[
+                        self.all_transactions_df["TRANSACTION_ACCOUNTID"] == account_id_of_tab
+                    ]
 
-                self._populate_grid_with_dataframe(
-                    tab_content_widget.results_grid,
-                    filtered_df,
-                    tab_content_widget.results_label,
-                    f"{account_name_of_tab}:",
-                )
+                    self._populate_grid_with_dataframe(
+                        tab_content_widget.results_grid,
+                        filtered_df,
+                        tab_content_widget.results_label,
+                        f"{account_name_of_tab}:",
+                    )
         else:
             # Some other type of tab content, or content not yet set
             pass
@@ -699,6 +776,132 @@ class MMEXAppLayout(BoxLayout):
         popup = Popup(title=title, content=popup_layout, size_hint=(0.8, 0.4))
         close_button.bind(on_press=popup.dismiss)
         popup.open()
+        
+    def show_filter_options(self, instance):
+        """Shows a popup with filter options."""
+        filter_options = [
+            "All Fields",
+            "Payee",
+            "Category",
+            "Notes",
+            "Tags"
+        ]
+        
+        popup_layout = BoxLayout(orientation="vertical", padding=10, spacing=5)
+        popup_label = Label(
+            text="Select field to filter by:",
+            size_hint_y=None,
+            height=30,
+            color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG
+        )
+        popup_layout.add_widget(popup_label)
+        
+        # Add buttons for each filter option
+        for option in filter_options:
+            option_button = Button(text=option, size_hint_y=None, height=40)
+            option_button.bind(on_press=lambda btn, opt=option: self.select_filter_option(opt, popup))
+            popup_layout.add_widget(option_button)
+        
+        # Cancel button
+        cancel_button = Button(text="Cancel", size_hint_y=None, height=40)
+        popup_layout.add_widget(cancel_button)
+        
+        popup = Popup(title="Filter Options", content=popup_layout, size_hint=(0.8, 0.6))
+        cancel_button.bind(on_press=popup.dismiss)
+        
+        for child in popup_layout.children:
+            if isinstance(child, Button) and child.text in filter_options:
+                child.bind(on_press=lambda btn, opt=child.text, pop=popup: self.select_filter_option(opt, pop))
+        
+        popup.open()
+    
+    def select_filter_option(self, option, popup):
+        """Sets the selected filter option and closes the popup."""
+        self.filter_type.text = option
+        popup.dismiss()
+        # Apply the filter with the new option if there's text in the search box
+        if self.search_input.text.strip():
+            self.apply_search_filter(None)
+    
+    def apply_search_filter(self, instance):
+        """Applies the search filter to the current data."""
+        search_text = self.search_input.text.strip().lower()
+        
+        if not search_text:
+            self.clear_search_filter(None)
+            return
+            
+        if self.all_transactions_df is None or self.all_transactions_df.empty:
+            self.show_popup("Search Error", "No data available to search. Please run a query first.")
+            return
+            
+        # Create a copy of the original dataframe to filter
+        filtered_df = self.all_transactions_df.copy()
+        
+        # Apply filter based on selected filter type
+        filter_type = self.filter_type.text
+        
+        if filter_type == "All Fields":
+            # Search in all relevant columns
+            mask = (
+                filtered_df["PAYEENAME"].astype(str).str.lower().str.contains(search_text, na=False) |
+                filtered_df["CATEGNAME"].astype(str).str.lower().str.contains(search_text, na=False) |
+                filtered_df["NOTES"].astype(str).str.lower().str.contains(search_text, na=False) |
+                filtered_df["TAGNAMES"].astype(str).str.lower().str.contains(search_text, na=False)
+            )
+        elif filter_type == "Payee":
+            mask = filtered_df["PAYEENAME"].astype(str).str.lower().str.contains(search_text, na=False)
+        elif filter_type == "Category":
+            mask = filtered_df["CATEGNAME"].astype(str).str.lower().str.contains(search_text, na=False)
+        elif filter_type == "Notes":
+            mask = filtered_df["NOTES"].astype(str).str.lower().str.contains(search_text, na=False)
+        elif filter_type == "Tags":
+            mask = filtered_df["TAGNAMES"].astype(str).str.lower().str.contains(search_text, na=False)
+        else:
+            # Default to all fields if somehow an invalid option is selected
+            mask = (
+                filtered_df["PAYEENAME"].astype(str).str.lower().str.contains(search_text, na=False) |
+                filtered_df["CATEGNAME"].astype(str).str.lower().str.contains(search_text, na=False) |
+                filtered_df["NOTES"].astype(str).str.lower().str.contains(search_text, na=False) |
+                filtered_df["TAGNAMES"].astype(str).str.lower().str.contains(search_text, na=False)
+            )
+        
+        # Apply the filter
+        filtered_df = filtered_df[mask]
+        
+        # Update the current tab with filtered data
+        current_tab = self.tab_panel.current_tab
+        
+        if current_tab == self.all_transactions_tab:
+            # Update the All Transactions tab
+            self._populate_grid_with_dataframe(
+                self.all_transactions_grid,
+                filtered_df,
+                self.all_transactions_status_label,
+                f"Search results ({filter_type}):"
+            )
+        elif hasattr(current_tab, 'content') and isinstance(current_tab.content, AccountTabContent):
+            # Update the account-specific tab
+            tab_content = current_tab.content
+            account_id = tab_content.account_id
+            
+            # Further filter by account ID
+            account_filtered_df = filtered_df[filtered_df["TRANSACTION_ACCOUNTID"] == account_id]
+            
+            self._populate_grid_with_dataframe(
+                tab_content.results_grid,
+                account_filtered_df,
+                tab_content.results_label,
+                f"{tab_content.account_name} (filtered):"
+            )
+    
+    def clear_search_filter(self, instance):
+        """Clears the search filter and restores the original data display."""
+        self.search_input.text = ""
+        self.filter_type.text = "All Fields"
+        
+        # Refresh the current tab with unfiltered data
+        self.on_tab_switch(self.tab_panel, self.tab_panel.current_tab)
 
     def exit_app(self, instance):
         """Closes the application."""
