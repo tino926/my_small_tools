@@ -27,6 +27,9 @@ import os
 
 import sqlite3
 import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from kivy.garden.matplotlib.backend_kivyagg import FigureCanvasKivyAgg
 
 from dotenv import load_dotenv
 from datetime import datetime
@@ -274,6 +277,82 @@ class AccountTabContent(BoxLayout):
         self.add_widget(self.scroll_view)
 
 
+class VisualizationTab(BoxLayout):
+    """Tab for data visualization charts."""
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = "vertical"
+        self.padding = [5, 5, 5, 5]
+        self.spacing = 5
+        
+        # Chart type selection
+        self.chart_options_layout = BoxLayout(size_hint_y=None, height=40, spacing=10)
+        self.chart_options_layout.add_widget(Label(text="Chart Type:", size_hint_x=0.3, color=DEFAULT_TEXT_COLOR_ON_DARK_BG))
+        
+        # Dropdown button for chart types
+        self.chart_type_btn = Button(text="Spending by Category", size_hint_x=0.7)
+        self.chart_type_btn.bind(on_press=self.show_chart_options)
+        self.chart_options_layout.add_widget(self.chart_type_btn)
+        self.add_widget(self.chart_options_layout)
+        
+        # Chart display area
+        self.chart_layout = BoxLayout(orientation="vertical")
+        self.add_widget(self.chart_layout)
+        
+        # Initial message
+        self.info_label = Label(
+            text="Select chart type and run a query to view visualizations",
+            color=DEFAULT_TEXT_COLOR_ON_DARK_BG
+        )
+        self.chart_layout.add_widget(self.info_label)
+    
+    def show_chart_options(self, instance):
+        """Shows a popup with chart type options."""
+        chart_options = [
+            "Spending by Category",
+            "Spending Over Time",
+            "Income vs Expenses",
+            "Top Payees"
+        ]
+        
+        popup_layout = BoxLayout(orientation="vertical", padding=10, spacing=5)
+        popup_label = Label(
+            text="Select chart type:",
+            size_hint_y=None,
+            height=30,
+            color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG
+        )
+        popup_layout.add_widget(popup_label)
+        
+        # Add buttons for each chart option
+        for option in chart_options:
+            option_button = Button(text=option, size_hint_y=None, height=40)
+            option_button.bind(on_press=lambda btn, opt=option: self.select_chart_option(opt, popup))
+            popup_layout.add_widget(option_button)
+        
+        # Cancel button
+        cancel_button = Button(text="Cancel", size_hint_y=None, height=40)
+        popup_layout.add_widget(cancel_button)
+        
+        popup = Popup(title="Chart Options", content=popup_layout, size_hint=(0.8, 0.6))
+        cancel_button.bind(on_press=popup.dismiss)
+        
+        for child in popup_layout.children:
+            if isinstance(child, Button) and child.text in chart_options:
+                child.bind(on_press=lambda btn, opt=child.text, pop=popup: self.select_chart_option(opt, pop))
+        
+        popup.open()
+    
+    def select_chart_option(self, option, popup):
+        """Sets the selected chart option and closes the popup."""
+        self.chart_type_btn.text = option
+        popup.dismiss()
+        # Notify the parent to update the chart
+        if hasattr(self.parent, 'parent') and hasattr(self.parent.parent, 'update_visualization'):
+            self.parent.parent.update_visualization()
+
+
 class MMEXAppLayout(BoxLayout):
     """Main layout for the MMEX Kivy application."""
 
@@ -373,7 +452,8 @@ class MMEXAppLayout(BoxLayout):
         self.add_widget(self.tab_panel)
 
         self._create_all_transactions_tab()  # Create the "All Transactions" tab first
-        self.load_account_specific_tabs()  # Then load other account tabs
+        self._create_visualization_tab()     # Create the visualization tab
+        self.load_account_specific_tabs()    # Then load other account tabs
 
         # --- Exit Button ---
         exit_button_layout = BoxLayout(
@@ -428,6 +508,17 @@ class MMEXAppLayout(BoxLayout):
         # Set text color for the status label inside the tab
         self.all_transactions_status_label.color = DEFAULT_TEXT_COLOR_ON_DARK_BG
         self.tab_panel.default_tab = self.all_transactions_tab  # Set as default
+        
+    def _create_visualization_tab(self):
+        """Creates the visualization tab for charts and graphs."""
+        self.visualization_tab = TabbedPanelHeader(text="Charts")
+        
+        # Create the visualization content
+        self.visualization_content = VisualizationTab()
+        self.visualization_tab.content = self.visualization_content
+        
+        # Add the tab to the panel
+        self.tab_panel.add_widget(self.visualization_tab)
 
     def load_account_specific_tabs(self):
         if not self.db_file_path:
@@ -647,6 +738,10 @@ class MMEXAppLayout(BoxLayout):
         search_text = self.search_input.text.strip() if hasattr(self, 'search_input') else ""
         has_search_filter = bool(search_text)
         filter_type = self.filter_type.text if hasattr(self, 'filter_type') else "All Fields"
+        
+        # If visualization tab is selected, update the charts
+        if current_tab_header == self.visualization_tab:
+            self.update_visualization()
 
         if current_tab_header == self.all_transactions_tab:
             # "All Transactions" tab is selected, ensure its grid is populated if data exists
@@ -916,6 +1011,202 @@ class MMEXAppLayout(BoxLayout):
         
         # Refresh the current tab with unfiltered data
         self.on_tab_switch(self.tab_panel, self.tab_panel.current_tab)
+    
+    def update_visualization(self):
+        """Updates the visualization based on the selected chart type."""
+        if not hasattr(self, 'visualization_content') or not hasattr(self, 'all_transactions_df') or self.all_transactions_df is None:
+            return
+        
+        # Clear previous chart
+        self.visualization_content.chart_layout.clear_widgets()
+        
+        # Get selected chart type
+        chart_type = self.visualization_content.chart_type_btn.text
+        
+        if self.all_transactions_df.empty:
+            self.visualization_content.chart_layout.add_widget(Label(
+                text="No data available for visualization. Please run a query first.",
+                color=DEFAULT_TEXT_COLOR_ON_DARK_BG
+            ))
+            return
+        
+        # Create the appropriate chart based on selection
+        if chart_type == "Spending by Category":
+            self._create_category_spending_chart()
+        elif chart_type == "Spending Over Time":
+            self._create_spending_over_time_chart()
+        elif chart_type == "Income vs Expenses":
+            self._create_income_vs_expenses_chart()
+        elif chart_type == "Top Payees":
+            self._create_top_payees_chart()
+    
+    def _create_category_spending_chart(self):
+        """Creates a pie chart showing spending by category."""
+        # Filter for expenses (negative amounts)
+        expenses_df = self.all_transactions_df[self.all_transactions_df['TRANSAMOUNT'] < 0].copy()
+        
+        if expenses_df.empty:
+            self.visualization_content.chart_layout.add_widget(Label(
+                text="No expense data available for the selected period.",
+                color=DEFAULT_TEXT_COLOR_ON_DARK_BG
+            ))
+            return
+        
+        # Group by category and sum amounts (make positive for better visualization)
+        expenses_df['TRANSAMOUNT'] = expenses_df['TRANSAMOUNT'].abs()
+        category_spending = expenses_df.groupby('CATEGNAME')['TRANSAMOUNT'].sum().sort_values(ascending=False)
+        
+        # Limit to top 10 categories for readability
+        if len(category_spending) > 10:
+            other_amount = category_spending[10:].sum()
+            category_spending = category_spending[:10]
+            category_spending['Other'] = other_amount
+        
+        # Create the figure and plot
+        plt.clf()
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # Create pie chart
+        wedges, texts, autotexts = ax.pie(
+            category_spending.values, 
+            labels=category_spending.index, 
+            autopct='%1.1f%%',
+            textprops={'color': 'black', 'fontsize': 8},
+            startangle=90
+        )
+        
+        # Equal aspect ratio ensures that pie is drawn as a circle
+        ax.axis('equal')
+        plt.title('Spending by Category')
+        
+        # Create canvas
+        chart_canvas = FigureCanvasKivyAgg(fig)
+        self.visualization_content.chart_layout.add_widget(chart_canvas)
+    
+    def _create_spending_over_time_chart(self):
+        """Creates a line chart showing spending over time."""
+        # Make a copy of the dataframe
+        df = self.all_transactions_df.copy()
+        
+        # Convert date strings to datetime objects
+        df['TRANSDATE'] = pd.to_datetime(df['TRANSDATE'])
+        
+        # Group by date and calculate daily spending (expenses are negative)
+        daily_spending = df.groupby(df['TRANSDATE'].dt.date)['TRANSAMOUNT'].sum()
+        
+        # Create the figure and plot
+        plt.clf()
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # Plot the data
+        ax.plot(daily_spending.index, daily_spending.values, marker='o', linestyle='-')
+        
+        # Add labels and title
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Amount')
+        ax.set_title('Transactions Over Time')
+        
+        # Rotate date labels for better readability
+        plt.xticks(rotation=45)
+        
+        # Adjust layout
+        plt.tight_layout()
+        
+        # Create canvas
+        chart_canvas = FigureCanvasKivyAgg(fig)
+        self.visualization_content.chart_layout.add_widget(chart_canvas)
+    
+    def _create_income_vs_expenses_chart(self):
+        """Creates a bar chart comparing income vs expenses."""
+        # Make a copy of the dataframe
+        df = self.all_transactions_df.copy()
+        
+        # Convert date strings to datetime objects
+        df['TRANSDATE'] = pd.to_datetime(df['TRANSDATE'])
+        
+        # Add a month column for grouping
+        df['Month'] = df['TRANSDATE'].dt.to_period('M')
+        
+        # Separate income and expenses
+        income_df = df[df['TRANSAMOUNT'] > 0]
+        expense_df = df[df['TRANSAMOUNT'] < 0]
+        
+        # Group by month
+        monthly_income = income_df.groupby('Month')['TRANSAMOUNT'].sum()
+        monthly_expenses = expense_df.groupby('Month')['TRANSAMOUNT'].sum().abs()  # Make positive for visualization
+        
+        # Create a DataFrame with both income and expenses
+        monthly_data = pd.DataFrame({
+            'Income': monthly_income,
+            'Expenses': monthly_expenses
+        })
+        
+        # Fill NaN values with 0
+        monthly_data.fillna(0, inplace=True)
+        
+        # Create the figure and plot
+        plt.clf()
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # Plot the data
+        monthly_data.plot(kind='bar', ax=ax)
+        
+        # Add labels and title
+        ax.set_xlabel('Month')
+        ax.set_ylabel('Amount')
+        ax.set_title('Monthly Income vs Expenses')
+        
+        # Rotate date labels for better readability
+        plt.xticks(rotation=45)
+        
+        # Add a legend
+        ax.legend()
+        
+        # Adjust layout
+        plt.tight_layout()
+        
+        # Create canvas
+        chart_canvas = FigureCanvasKivyAgg(fig)
+        self.visualization_content.chart_layout.add_widget(chart_canvas)
+    
+    def _create_top_payees_chart(self):
+        """Creates a horizontal bar chart showing top payees by spending."""
+        # Filter for expenses (negative amounts)
+        expenses_df = self.all_transactions_df[self.all_transactions_df['TRANSAMOUNT'] < 0].copy()
+        
+        if expenses_df.empty:
+            self.visualization_content.chart_layout.add_widget(Label(
+                text="No expense data available for the selected period.",
+                color=DEFAULT_TEXT_COLOR_ON_DARK_BG
+            ))
+            return
+        
+        # Group by payee and sum amounts (make positive for better visualization)
+        expenses_df['TRANSAMOUNT'] = expenses_df['TRANSAMOUNT'].abs()
+        payee_spending = expenses_df.groupby('PAYEENAME')['TRANSAMOUNT'].sum().sort_values(ascending=True)
+        
+        # Limit to top 15 payees for readability
+        if len(payee_spending) > 15:
+            payee_spending = payee_spending.tail(15)
+        
+        # Create the figure and plot
+        plt.clf()
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # Plot horizontal bar chart
+        payee_spending.plot(kind='barh', ax=ax)
+        
+        # Add labels and title
+        ax.set_xlabel('Amount')
+        ax.set_ylabel('Payee')
+        ax.set_title('Top Payees by Spending')
+        
+        # Adjust layout
+        plt.tight_layout()
+        
+        # Create canvas
+        chart_canvas = FigureCanvasKivyAgg(fig)
+        self.visualization_content.chart_layout.add_widget(chart_canvas)
 
     def exit_app(self, instance):
         """Closes the application."""
