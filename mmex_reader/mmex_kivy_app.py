@@ -1,1437 +1,518 @@
-"""
-A Kivy application for reading and displaying financial transactions
+"""A Kivy application for reading and displaying financial transactions
 from an MMEX (MoneyManagerEx) database file.
+
+This application provides a GUI for viewing and filtering transactions,
+viewing account balances, and visualizing financial data with charts.
+
+The application is organized into several modules:
+- db_utils.py: Database utility functions
+- ui_components.py: UI component classes
+- visualization.py: Data visualization functions
+- mmex_kivy_app.py: Main application code
 """
 
+# Import custom modules
+from db_utils import (
+    load_db_path, get_all_accounts, get_transactions, calculate_balance_for_account,
+    CATEGORY_TABLE, SUBCATEGORY_TABLE, ACCOUNT_TABLE, TRANSACTION_TABLE, PAYEE_TABLE,
+    TAG_TABLE, TAGLINK_TABLE
+)
+from ui_components import (
+    AccountTabContent, show_popup, create_header_label, populate_grid_with_dataframe,
+    BG_COLOR, HEADER_COLOR, BUTTON_COLOR, HIGHLIGHT_COLOR
+)
+from visualization import (
+    VisualizationTab, create_category_spending_chart, create_spending_over_time_chart,
+    create_income_vs_expenses_chart, create_top_payees_chart
+)
+
+import os
+from datetime import datetime, timedelta
+
+# Third-party imports
 import kivy
+import pandas as pd
+
+# Kivy imports
+kivy.require("2.1.0")  # replace with your Kivy version if needed
 from kivy.app import App
+from kivy.core.window import Window
+from kivy.lang import Builder
+from kivy.properties import ObjectProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
-from kivy.uix.textinput import TextInput
-from kivy.uix.button import Button
-from kivy.uix.scrollview import ScrollView
 from kivy.uix.popup import Popup
-from kivy.core.window import Window
-
-# from kivy.uix.spinner import Spinner # Spinner not actively used currently
-from kivy.uix.tabbedpanel import (
-    TabbedPanel,
-    TabbedPanelHeader,
-)
-from kivy.properties import ObjectProperty, StringProperty
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.tabbedpanel import TabbedPanel, TabbedPanelHeader
+from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget  # For spacer
-from kivy.lang import Builder
-from kivy.graphics import Color, Rectangle  # Added for custom background
-import os
-
-import sqlite3
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
-from kivy.garden.matplotlib.backend_kivyagg import FigureCanvasKivyAgg
-
-from dotenv import load_dotenv
-from datetime import datetime
-from datetime import timedelta
-
-kivy.require("2.1.0")  # replace with your Kivy version if needed
-
 
 # --- Script Directory ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # --- Font Configuration ---
-# Path to the Unicode font file. Ensure this font supports characters in your database.
-UNICODE_FONT_PATH = "fonts/NotoSansCJKtc-Regular.otf"
-
-# --- MMEX Database Schema Configuration ---
-DB_TABLE_TRANSACTIONS = "CHECKINGACCOUNT_V1"
-DB_TABLE_ACCOUNTS = "ACCOUNTLIST_V1"
-DB_TABLE_PAYEES = "PAYEE_V1"
-DB_TABLE_CATEGORIES = "CATEGORY_V1"
-DB_FIELD_TRANS_ID = "TRANSID"
-DB_FIELD_TRANS_DATE = "TRANSDATE"
-DB_FIELD_TRANS_NOTES = "NOTES"
-DB_FIELD_TRANS_AMOUNT = "TRANSAMOUNT"
-DB_FIELD_TRANS_ACCOUNTID_FK = "ACCOUNTID"
-DB_FIELD_TRANS_PAYEEID_FK = "PAYEEID"
-DB_FIELD_TRANS_CATEGID_FK = "CATEGID"
-DB_FIELD_ACCOUNT_ID_PK = "ACCOUNTID"
-DB_FIELD_ACCOUNT_NAME = "ACCOUNTNAME"
-DB_FIELD_ACCOUNT_INITIAL_BALANCE = "INITIALBAL"  # Initial balance for an account
-DB_FIELD_PAYEE_ID_PK = "PAYEEID"
-DB_FIELD_PAYEE_NAME = "PAYEENAME"
-DB_FIELD_CATEGORY_ID_PK = "CATEGID"
-DB_FIELD_CATEGORY_NAME = "CATEGNAME"
-DB_TABLE_TAGS = "TAG_V1"  # Confirmed table name for tags
-DB_TABLE_TRANSACTION_TAGS = (
-    "TAGLINK_V1"  # Confirmed linking table for transactions and tags
-)
-DB_FIELD_TAG_ID_PK = "TAGID"
-DB_FIELD_TAG_NAME = "TAGNAME"
-DB_FIELD_TRANSTAG_TRANSID_FK = "REFID"  # FK in TAGLINK_V1 to CHECKINGACCOUNT_V1.TRANSID
-DB_FIELD_TRANSTAG_TAGID_FK = "TAGID"  # FK in TAGLINK_V1 to TAG_V1.TAGID
-
-# --- UI Color Constants ---
-DEFAULT_TEXT_COLOR_ON_LIGHT_BG = (0, 0, 0, 1)  # Black text for light backgrounds
-DEFAULT_TEXT_COLOR_ON_DARK_BG = (1, 1, 1, 1)  # White text for dark backgrounds
-GRID_BACKGROUND_GREEN = (
-    0.95,
-    0.95,
-    0.95,
-    1,
-)  # A moderately dark green for grid backgrounds
-
-
-# --- Database Functions ---
-def load_db_path():
-    env_path = os.path.join(SCRIPT_DIR, ".env")
-    load_dotenv(dotenv_path=env_path, override=True)
-    db_file = os.getenv("DB_FILE_PATH")
-    return db_file
-
-
-def get_all_accounts(db_file):
-    """Fetches all account names and IDs from the MMEX database."""
-    conn = None
-    try:
-        conn = sqlite3.connect(db_file)
-        query = (
-            f"SELECT {DB_FIELD_ACCOUNT_ID_PK} AS ACCOUNTID, "
-            f"{DB_FIELD_ACCOUNT_NAME} AS ACCOUNTNAME, "
-            f"{DB_FIELD_ACCOUNT_INITIAL_BALANCE} AS INITIALBAL "
-            f"FROM {DB_TABLE_ACCOUNTS} ORDER BY {DB_FIELD_ACCOUNT_NAME} ASC;"
-        )
-        df = pd.read_sql_query(query, conn)
-        if df.empty:
-            return "No accounts found.", None
-        return None, df
-    except sqlite3.Error as e:
-        return f"Database Error fetching accounts: {e}", None
-    except Exception as e:
-        return f"An unexpected error occurred fetching accounts: {e}", None
-    finally:
-        if conn:
-            conn.close()
-
-
-def get_transactions(db_file, start_date_str, end_date_str, account_id=None):
-    """
-    Fetches transactions from the MMEX database within a given date range,
-    optionally filtered by account_id.
-    """
-    try:
-        datetime.strptime(start_date_str, "%Y-%m-%d")
-        datetime.strptime(end_date_str, "%Y-%m-%d")
-    except ValueError:
-        return (
-            f"Error: Incorrect date format. Please use YYYY-MM-DD. "
-            f"Start: {start_date_str}, End: {end_date_str}",
-            None,
-        )
-    conn = None
-    try:
-        conn = sqlite3.connect(db_file)
-        query_parts = [
-            f"SELECT acc.{DB_FIELD_ACCOUNT_NAME} AS ACCOUNTNAME,",
-            f"trans.{DB_FIELD_TRANS_DATE} AS TRANSDATE,",
-            f"trans.{DB_FIELD_TRANS_NOTES} AS NOTES,",
-            f"trans.{DB_FIELD_TRANS_AMOUNT} AS TRANSAMOUNT,",
-            f"payee.{DB_FIELD_PAYEE_NAME} AS PAYEENAME,",
-            f"trans.{DB_FIELD_TRANS_ACCOUNTID_FK} AS TRANSACTION_ACCOUNTID,",  # Added for robust filtering
-            f"cat.{DB_FIELD_CATEGORY_NAME} AS CATEGNAME,",
-            # Subquery to concatenate all tags for a transaction
-            f"""(
-                SELECT GROUP_CONCAT(tag.{DB_FIELD_TAG_NAME}, ', ')
-                FROM {DB_TABLE_TAGS} AS tag
-                JOIN {DB_TABLE_TRANSACTION_TAGS} AS tt ON tag.{DB_FIELD_TAG_ID_PK} = tt.{DB_FIELD_TRANSTAG_TAGID_FK}
-                WHERE tt.{DB_FIELD_TRANSTAG_TRANSID_FK} = trans.{DB_FIELD_TRANS_ID} AND tt.REFTYPE = 'Transaction'
-            ) AS TAGNAMES""",
-            f"FROM {DB_TABLE_TRANSACTIONS} AS trans",
-            f"LEFT JOIN {DB_TABLE_ACCOUNTS} AS acc ON trans.{DB_FIELD_TRANS_ACCOUNTID_FK} = acc.{DB_FIELD_ACCOUNT_ID_PK}",
-            f"LEFT JOIN {DB_TABLE_PAYEES} AS payee ON trans.{DB_FIELD_TRANS_PAYEEID_FK} = payee.{DB_FIELD_PAYEE_ID_PK}",
-            f"LEFT JOIN {DB_TABLE_CATEGORIES} AS cat ON trans.{DB_FIELD_TRANS_CATEGID_FK} = cat.{DB_FIELD_CATEGORY_ID_PK}",
-            f"WHERE trans.{DB_FIELD_TRANS_DATE} < ? AND trans.{DB_FIELD_TRANS_DATE} >= ?",  # Corrected date range logic
-        ]
-        end_date_str_p1 = (
-            datetime.strptime(end_date_str, "%Y-%m-%d") + timedelta(days=1)
-        ).strftime("%Y-%m-%d")
-        # Correct order for params based on the SQL:
-        # SQL: ... trans.TRANSDATE < ? (upper bound, end_date_str_p1)
-        #          AND trans.TRANSDATE >= ? (lower bound, start_date_str) ...
-        params = [end_date_str_p1, start_date_str]
-        if (
-            account_id is not None
-        ):  # Add condition to filter by account ID in the SQL query if provided.
-            query_parts.append(f"AND trans.{DB_FIELD_TRANS_ACCOUNTID_FK} = ?")  # type: ignore
-            params.append(account_id)
-        query_parts.append(
-            f"ORDER BY trans.{DB_FIELD_TRANS_DATE} ASC, trans.{DB_FIELD_TRANS_ID} ASC;"
-        )
-        query = " ".join(query_parts)
-        df = pd.read_sql_query(query, conn, params=tuple(params))
-        if df.empty:
-            return (
-                f"No income/expense records found between {start_date_str} "
-                f"and {end_date_str}"
-                + (f" for account ID {account_id}" if account_id else "")
-                + ".",
-                None,
-            )
-        return None, df
-    except sqlite3.Error as e:
-        return f"Database Error: {e}", None
-    except pd.io.sql.DatabaseError as e:
-        return f"Pandas SQL Error: {e}", None
-    except Exception as e:
-        return f"An unexpected error occurred: {e}", None
-    finally:
-        if conn:
-            conn.close()
-
-
-def get_balance_as_of_date(db_file, account_id, initial_balance, end_date_str):
-    """
-    Calculates the balance for an account as of a specific end date.
-    The balance is initial_balance + sum of transactions up to and including end_date_str.
-    """
-    conn = None
-    try:
-        # Validate end_date_str format
-        datetime.strptime(end_date_str, "%Y-%m-%d")
-
-        # Calculate end_date + 1 day for query condition (TRANSDATE < end_date_plus_one_day)
-        end_date_str_p1 = (
-            datetime.strptime(end_date_str, "%Y-%m-%d") + timedelta(days=1)
-        ).strftime("%Y-%m-%d")
-
-        conn = sqlite3.connect(db_file)
-        query = f"""
-            SELECT SUM({DB_FIELD_TRANS_AMOUNT})
-            FROM {DB_TABLE_TRANSACTIONS}
-            WHERE {DB_FIELD_TRANS_ACCOUNTID_FK} = ?
-            AND {DB_FIELD_TRANS_DATE} < ?
-        """
-        cursor = conn.cursor()
-        cursor.execute(query, (account_id, end_date_str_p1))
-        result = cursor.fetchone()
-
-        sum_transactions = result[0] if result and result[0] is not None else 0.0
-        balance = float(initial_balance) + float(sum_transactions)
-        return None, balance
-    except sqlite3.Error as e:
-        return f"Database error calculating balance: {e}", None
-    except ValueError:  # Catches strptime error
-        return f"Invalid date format for balance calculation: {end_date_str}", None
-    except Exception as e:
-        return f"Unexpected error calculating balance: {e}", None
-    finally:
-        if conn:
-            conn.close()
-
-
-class AccountTabContent(BoxLayout):
-    """Content for each account tab. Now primarily for displaying filtered data."""
-
-    account_id = ObjectProperty(None)
-    account_name = StringProperty("")
-    initial_balance = ObjectProperty(0.0)
-
-    def __init__(self, account_id, account_name, initial_balance, **kwargs):
-        super().__init__(**kwargs)
-        self.orientation = "vertical"
-        self.padding = [5, 5, 5, 5]
-        self.spacing = 5
-        self.account_id = account_id
-        self.account_name = account_name
-        self.initial_balance = initial_balance
-
-        # Layout for title and balance
-        header_layout = BoxLayout(size_hint_y=None, height=30, spacing=10)
-        self.results_label = Label(  # This is the status label for transactions
-            text=f"Transactions for {self.account_name}",
-            size_hint_x=0.7,
-            color=DEFAULT_TEXT_COLOR_ON_DARK_BG,
-        )
-        header_layout.add_widget(self.results_label)
-
-        self.balance_label = Label(
-            text="Balance: N/A",
-            size_hint_x=0.3,
-            color=DEFAULT_TEXT_COLOR_ON_DARK_BG,
-        )
-        header_layout.add_widget(self.balance_label)
-        self.add_widget(header_layout)
-
-        self.scroll_view = ScrollView()
-        self.results_grid = GridLayout(
-            cols=7, size_hint_y=None, spacing=2
-        )  # Increased cols
-        self.results_grid.bind(minimum_height=self.results_grid.setter("height"))
-
-        with self.results_grid.canvas.before:
-            Color(*GRID_BACKGROUND_GREEN)
-            self.results_grid_bg = Rectangle(
-                size=self.results_grid.size, pos=self.results_grid.pos
-            )
-
-        def update_results_grid_bg_rect(instance, value):
-            self.results_grid_bg.pos = instance.pos
-            self.results_grid_bg.size = instance.size
-
-        self.results_grid.bind(
-            pos=update_results_grid_bg_rect, size=update_results_grid_bg_rect
-        )
-        self.scroll_view.add_widget(self.results_grid)
-        self.add_widget(self.scroll_view)
-
-
-class VisualizationTab(BoxLayout):
-    """Tab for data visualization charts."""
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.orientation = "vertical"
-        self.padding = [5, 5, 5, 5]
-        self.spacing = 5
-
-        # Chart type selection
-        self.chart_options_layout = BoxLayout(size_hint_y=None, height=40, spacing=10)
-        self.chart_options_layout.add_widget(
-            Label(
-                text="Chart Type:", size_hint_x=0.3, color=DEFAULT_TEXT_COLOR_ON_DARK_BG
-            )
-        )
-
-        # Dropdown button for chart types
-        self.chart_type_btn = Button(text="Spending by Category", size_hint_x=0.7)
-        self.chart_type_btn.bind(on_press=self.show_chart_options)
-        self.chart_options_layout.add_widget(self.chart_type_btn)
-        self.add_widget(self.chart_options_layout)
-
-        # Chart display area
-        self.chart_layout = BoxLayout(orientation="vertical")
-        self.add_widget(self.chart_layout)
-
-        # Initial message
-        self.info_label = Label(
-            text="Select chart type and run a query to view visualizations",
-            color=DEFAULT_TEXT_COLOR_ON_DARK_BG,
-        )
-        self.chart_layout.add_widget(self.info_label)
-
-    def show_chart_options(self, instance):
-        """Shows a popup with chart type options."""
-        chart_options = [
-            "Spending by Category",
-            "Spending Over Time",
-            "Income vs Expenses",
-            "Top Payees",
-        ]
-
-        popup_layout = BoxLayout(orientation="vertical", padding=10, spacing=5)
-        popup_label = Label(
-            text="Select chart type:",
-            size_hint_y=None,
-            height=30,
-            color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG,
-        )
-        popup_layout.add_widget(popup_label)
-
-        # Add buttons for each chart option
-        for option in chart_options:
-            option_button = Button(text=option, size_hint_y=None, height=40)
-            option_button.bind(
-                on_press=lambda btn, opt=option: self.select_chart_option(opt, popup)
-            )
-            popup_layout.add_widget(option_button)
-
-        # Cancel button
-        cancel_button = Button(text="Cancel", size_hint_y=None, height=40)
-        popup_layout.add_widget(cancel_button)
-
-        popup = Popup(title="Chart Options", content=popup_layout, size_hint=(0.8, 0.6))
-        cancel_button.bind(on_press=popup.dismiss)
-
-        for child in popup_layout.children:
-            if isinstance(child, Button) and child.text in chart_options:
-                child.bind(
-                    on_press=lambda btn,
-                    opt=child.text,
-                    pop=popup: self.select_chart_option(opt, pop)
-                )
-
-        popup.open()
-
-    def select_chart_option(self, option, popup):
-        """Sets the selected chart option and closes the popup."""
-        self.chart_type_btn.text = option
-        popup.dismiss()
-        # Notify the parent to update the chart
-        if hasattr(self.parent, "parent") and hasattr(
-            self.parent.parent, "update_visualization"
-        ):
-            self.parent.parent.update_visualization()
+UNICODE_FONT_PATH = os.path.join(SCRIPT_DIR, "fonts", "NotoSansCJKtc-Regular.otf")
 
 
 class MMEXAppLayout(BoxLayout):
     """Main layout for the MMEX Kivy application."""
-
+    
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.orientation = "vertical"
-        self.padding = [10, 10, 10, 10]
+        super(MMEXAppLayout, self).__init__(**kwargs)
+        self.orientation = 'vertical'
+        self.padding = 10
         self.spacing = 10
-        self.all_transactions_df = None  # Store the globally queried DataFrame
-        self.db_file_path = load_db_path()  # Load DB path once
-
-        # --- Database Path Display ---
-        self.db_path_label = Label(
-            # text=f"DB: {load_db_path() or 'Not Set'}",
-            text=f"DB: {self.db_file_path or 'Not Set'}",
-            size_hint_y=None,
-            height=40,
-            # This label is on the main light grey background
-            color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG,
-        )
-        self.add_widget(self.db_path_label)
-
-        # --- Global Date Inputs and Refresh Button ---
-        date_input_layout = GridLayout(cols=5, size_hint_y=None, height=40, spacing=10)
-        date_input_layout.add_widget(
-            Label(text="Start Date:", color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG)
-        )
-
-        def get_first_day_of_last_month():
-            today = datetime.now()
-            first_day_of_current_month = today.replace(day=1)
-            first_day_of_last_month = (
-                first_day_of_current_month - timedelta(days=1)
-            ).replace(day=1)
-            return first_day_of_last_month.strftime("%Y-%m-%d")
-
+        
+        # Database path
+        self.db_path = load_db_path()
+        
+        # Date range inputs
+        self._create_date_inputs()
+        
+        # Search and filter layout
+        self._create_search_filter_layout()
+        
+        # Tabbed panel for accounts
+        self._create_tabbed_panel()
+        
+        # Exit button
+        self._create_exit_button()
+        
+        # Load account tabs
+        self.load_account_specific_tabs()
+        
+        # Run initial query
+        self.run_global_query()
+    
+    def _create_date_inputs(self):
+        """Create date input fields with validation."""
+        date_layout = BoxLayout(size_hint=(1, None), height=40, spacing=10)
+        
+        # Start date input
+        date_layout.add_widget(Label(text="Start Date:", size_hint=(0.15, 1)))
+        
         self.start_date_input = TextInput(
-            text=get_first_day_of_last_month(), multiline=False
+            text=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
+            multiline=False,
+            size_hint=(0.35, 1)
         )
-        self.start_date_input.bind(
-            on_text_validate=self.trigger_global_query_on_date_change
-        )
-        date_input_layout.add_widget(self.start_date_input)
-        date_input_layout.add_widget(
-            Label(text="End Date:", color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG)
-        )
+        self.start_date_input.bind(text=self.trigger_global_query_on_date_change)
+        date_layout.add_widget(self.start_date_input)
+        
+        # End date input
+        date_layout.add_widget(Label(text="End Date:", size_hint=(0.15, 1)))
+        
         self.end_date_input = TextInput(
-            text=datetime.now().strftime("%Y-%m-%d"), multiline=False
+            text=datetime.now().strftime("%Y-%m-%d"),
+            multiline=False,
+            size_hint=(0.35, 1)
         )
-        self.end_date_input.bind(
-            on_text_validate=self.trigger_global_query_on_date_change
-        )
-        date_input_layout.add_widget(self.end_date_input)
-
-        # Add refresh button
-        refresh_button = Button(
-            text="Refresh", size_hint_x=None, width=100, on_press=self.run_global_query
-        )
-        date_input_layout.add_widget(refresh_button)
-        self.add_widget(date_input_layout)
-
-        # --- Search and Filter Layout ---
-        search_layout = BoxLayout(
-            orientation="horizontal", size_hint_y=None, height=40, spacing=10
-        )
-
+        self.end_date_input.bind(text=self.trigger_global_query_on_date_change)
+        date_layout.add_widget(self.end_date_input)
+        
+        self.add_widget(date_layout)
+    
+    def _create_search_filter_layout(self):
+        """Create search and filter layout."""
+        search_layout = BoxLayout(size_hint=(1, None), height=40, spacing=10)
+        
         # Search input
-        search_layout.add_widget(
-            Label(
-                text="Search:",
-                size_hint_x=None,
-                width=60,
-                color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG,
-            )
-        )
+        search_layout.add_widget(Label(text="Search:", size_hint=(0.15, 1)))
+        
         self.search_input = TextInput(
-            multiline=False, hint_text="Enter search text", size_hint_x=0.6
+            multiline=False,
+            size_hint=(0.35, 1)
         )
-        self.search_input.bind(on_text_validate=self.apply_search_filter)
+        self.search_input.bind(text=self.apply_search_filter)
         search_layout.add_widget(self.search_input)
-
-        # Filter type selection
-        search_layout.add_widget(
-            Label(
-                text="Filter by:",
-                size_hint_x=None,
-                width=60,
-                color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG,
-            )
+        
+        # Filter type dropdown
+        search_layout.add_widget(Label(text="Filter By:", size_hint=(0.15, 1)))
+        
+        self.filter_button = Button(
+            text="All Fields",
+            size_hint=(0.25, 1),
+            background_color=BUTTON_COLOR
         )
-        self.filter_type = Button(text="All Fields", size_hint_x=0.3)
-        self.filter_type.bind(on_press=self.show_filter_options)
-        search_layout.add_widget(self.filter_type)
-
-        # Search button
-        search_button = Button(
-            text="Search", size_hint_x=0.2, on_press=self.apply_search_filter
+        self.filter_button.bind(on_release=self.show_filter_options)
+        search_layout.add_widget(self.filter_button)
+        
+        # Clear filter button
+        self.clear_filter_button = Button(
+            text="Clear",
+            size_hint=(0.1, 1),
+            background_color=BUTTON_COLOR
         )
-        search_layout.add_widget(search_button)
-
-        # Clear button
-        clear_button = Button(
-            text="Clear", size_hint_x=0.2, on_press=self.clear_search_filter
-        )
-        search_layout.add_widget(clear_button)
-
+        self.clear_filter_button.bind(on_release=self.clear_search_filter)
+        search_layout.add_widget(self.clear_filter_button)
+        
         self.add_widget(search_layout)
-
-        # --- Tabbed Panel for Accounts ---
+    
+    def _create_tabbed_panel(self):
+        """Create the tabbed panel for accounts."""
         self.tab_panel = TabbedPanel(
             do_default_tab=False,
-            tab_pos="top_mid",
-            size_hint_y=0.7,  # Adjusted size_hint_y
+            tab_width=150,
+            tab_height=40,
+            background_color=BG_COLOR
         )
-        self.tab_panel.bind(current_tab=self.on_tab_switch)
+        
+        # Create "All Transactions" tab
+        self._create_all_transactions_tab()
+        
+        # Create "Charts" tab
+        self._create_visualization_tab()
+        
         self.add_widget(self.tab_panel)
-
-        self._create_all_transactions_tab()  # Create the "All Transactions" tab first
-        self._create_visualization_tab()  # Create the visualization tab
-        self.load_account_specific_tabs()  # Then load other account tabs
-
-        # --- Exit Button ---
-        exit_button_layout = BoxLayout(
-            orientation="horizontal", size_hint_y=None, height=40, spacing=10
-        )
-        spacer = Widget(size_hint_x=1)
-        exit_button_layout.add_widget(spacer)
-        self.exit_button = Button(text="Exit", size_hint_x=None, width=100)
-        self.exit_button.bind(on_press=self.exit_app)  # type: ignore
-        exit_button_layout.add_widget(self.exit_button)
-        self.add_widget(exit_button_layout)
-
-        # Automatically load data on startup
-        self.run_global_query(None)  # Pass None as instance since no button is pressed
-
+    
     def _create_all_transactions_tab(self):
-        self.all_transactions_tab = TabbedPanelHeader(
-            text="All"
-        )  # Use TabbedPanelHeader
-
-        all_trans_content = BoxLayout(orientation="vertical", spacing=5, padding=5)
-        self.all_transactions_status_label = Label(
-            text="Perform a query to see all transactions.",
-            size_hint_y=None,
-            height=30,
-            color=(0, 0, 0, 1),
-        )  # This will be updated to white text below
-        all_trans_content.add_widget(self.all_transactions_status_label)
-
-        scroll_view_all = ScrollView()
-        self.all_transactions_grid = GridLayout(
-            cols=7, size_hint_y=None, spacing=2
-        )  # Increased cols
-        self.all_transactions_grid.bind(
-            minimum_height=self.all_transactions_grid.setter("height")
+        """Create the 'All Transactions' tab."""
+        self.all_transactions_tab = TabbedPanelHeader(text="All Transactions")
+        
+        # Content for "All Transactions" tab
+        all_content = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        
+        # Status label
+        self.all_transactions_status = Label(
+            text="All Transactions",
+            size_hint=(1, None),
+            height=30
         )
-
-        with self.all_transactions_grid.canvas.before:
-            Color(*GRID_BACKGROUND_GREEN)
-            self.all_transactions_grid_bg = Rectangle(
-                size=self.all_transactions_grid.size, pos=self.all_transactions_grid.pos
-            )
-
-        def update_all_transactions_grid_bg_rect(instance, value):
-            self.all_transactions_grid_bg.pos = instance.pos
-            self.all_transactions_grid_bg.size = instance.size
-
-        self.all_transactions_grid.bind(
-            pos=update_all_transactions_grid_bg_rect,
-            size=update_all_transactions_grid_bg_rect,
-        )
-
-        scroll_view_all.add_widget(self.all_transactions_grid)
-        all_trans_content.add_widget(scroll_view_all)
-
-        self.all_transactions_tab.content = all_trans_content
+        all_content.add_widget(self.all_transactions_status)
+        
+        # Scroll view for transactions
+        scroll_view = ScrollView(size_hint=(1, 1))
+        
+        # Grid for transactions
+        self.all_transactions_grid = GridLayout(cols=7, spacing=2, size_hint_y=None)
+        self.all_transactions_grid.bind(minimum_height=self.all_transactions_grid.setter('height'))
+        
+        # Add grid to scroll view
+        scroll_view.add_widget(self.all_transactions_grid)
+        
+        # Add scroll view to content
+        all_content.add_widget(scroll_view)
+        
+        # Set content for tab
+        self.all_transactions_tab.content = all_content
+        
+        # Add tab to panel
         self.tab_panel.add_widget(self.all_transactions_tab)
-        # Set text color for the status label inside the tab
-        self.all_transactions_status_label.color = DEFAULT_TEXT_COLOR_ON_DARK_BG
-        self.tab_panel.default_tab = self.all_transactions_tab  # Set as default
-
+        self.tab_panel.default_tab = self.all_transactions_tab
+    
     def _create_visualization_tab(self):
-        """Creates the visualization tab for charts and graphs."""
+        """Create the 'Charts' tab."""
         self.visualization_tab = TabbedPanelHeader(text="Charts")
-
-        # Create the visualization content
+        
+        # Create visualization content
         self.visualization_content = VisualizationTab()
+        self.visualization_content.set_parent_app(self)
+        
+        # Set content for tab
         self.visualization_tab.content = self.visualization_content
-
-        # Add the tab to the panel
+        
+        # Add tab to panel
         self.tab_panel.add_widget(self.visualization_tab)
-
+    
+    def _create_exit_button(self):
+        """Create the exit button."""
+        exit_layout = BoxLayout(size_hint=(1, None), height=40)
+        
+        # Add spacer
+        exit_layout.add_widget(Widget(size_hint=(0.8, 1)))
+        
+        # Exit button
+        exit_button = Button(
+            text="Exit",
+            size_hint=(0.2, 1),
+            background_color=BUTTON_COLOR
+        )
+        exit_button.bind(on_release=self.exit_app)
+        exit_layout.add_widget(exit_button)
+        
+        self.add_widget(exit_layout)
+    
     def load_account_specific_tabs(self):
-        if not self.db_file_path:
-            # Error already shown by db_path_label or initial global query attempt
+        """Load account-specific tabs."""
+        error, accounts_df = get_all_accounts(self.db_path)
+        
+        if error:
+            show_popup("Error", error)
             return
-
-        error_msg, accounts_df = get_all_accounts(self.db_file_path)
-        if error_msg:
-            self.show_popup("Error Loading Accounts", error_msg)
+        
+        if accounts_df is None or accounts_df.empty:
+            show_popup("No Accounts", "No accounts found in the database.")
             return
-
-        if accounts_df is not None and not accounts_df.empty:
-            for index, row in accounts_df.iterrows():
-                account_id = row["ACCOUNTID"]
-                account_name = str(row["ACCOUNTNAME"])
-
-                # Get initial balance robustly
-                initial_balance = 0.0
-                if DB_FIELD_ACCOUNT_INITIAL_BALANCE in accounts_df.columns:
-                    raw_val = row[DB_FIELD_ACCOUNT_INITIAL_BALANCE]
-                    if pd.notna(raw_val):
-                        try:
-                            initial_balance = float(raw_val)
-                        except ValueError:
-                            print(
-                                f"Warning: Could not convert INITIALBAL '{raw_val}' to float for account {account_name}. Defaulting to 0.0."
-                            )
+        
+        # Store account tabs for reference
+        self.account_tabs = {}
+        
+        # Create a tab for each account
+        for _, account in accounts_df.iterrows():
+            account_id = account['ACCOUNTID']
+            account_name = account['ACCOUNTNAME']
+            initial_balance = account['INITIALBAL']
+            
+            # Create tab header
+            tab = TabbedPanelHeader(text=account_name)
+            
+            # Create tab content
+            content = AccountTabContent(account_id, account_name, initial_balance)
+            tab.content = content
+            
+            # Add tab to panel
+            self.tab_panel.add_widget(tab)
+            
+            # Store tab for reference
+            self.account_tabs[account_id] = {
+                'tab': tab,
+                'content': content,
+                'name': account_name,
+                'initial_balance': initial_balance
+            }
+            
+            # Calculate initial balance
+            try:
+                end_date = self.end_date_input.text
+                error, balance = calculate_balance_for_account(self.db_path, account_id, initial_balance, datetime.strptime(end_date, "%Y-%m-%d"))
+                
+                if error:
+                    content.balance_label.text = f"Balance: Error"
                 else:
-                    print(
-                        f"Warning: '{DB_FIELD_ACCOUNT_INITIAL_BALANCE}' column not found in {DB_TABLE_ACCOUNTS}. Account balances might assume a zero initial balance."
-                    )
-
-                # Use TabbedPanelHeader for consistency if you want to style headers
-                tab_header = TabbedPanelHeader(
-                    text=account_name[:25]
-                )  # Truncate long names
-                # Store account_id and name directly on the header for easy access
-                tab_header.account_id = account_id
-                tab_header.account_name_full = account_name
-                # tab_header.initial_balance = initial_balance # Can store here if needed elsewhere
-                # The content will be an AccountTabContent instance
-                tab_content = AccountTabContent(
-                    account_id=account_id,
-                    account_name=account_name,
-                    initial_balance=initial_balance,
-                )
-                tab_header.content = tab_content
-                self.tab_panel.add_widget(tab_header)
-        # No "No Accounts" tab here, as "All Transactions" tab always exists.
-        # If no accounts, only "All Transactions" tab will be effectively usable for data.
-
-    def _populate_grid_with_dataframe(
-        self, target_grid, df, status_label_widget, status_message_prefix=""
-    ):
-        """Helper function to populate a GridLayout with DataFrame data."""
-        target_grid.clear_widgets()
-
-        if df is None or df.empty:
-            no_data_label = Label(
-                text="No data to display for current selection.",
-                size_hint_y=None,
-                height=30,
-                color=DEFAULT_TEXT_COLOR_ON_DARK_BG,
-            )
-            target_grid.add_widget(no_data_label)
-            if status_label_widget:
-                status_label_widget.text = f"{status_message_prefix} No records found."
+                    content.balance_label.text = f"Balance: ${balance:.2f}"
+            except Exception as e:
+                content.balance_label.text = f"Balance: Error"
+                print(f"Error calculating balance: {e}")
+    
+    def run_global_query(self, *args):
+        """Run a global query to fetch transactions."""
+        # Validate dates
+        try:
+            start_date = datetime.strptime(self.start_date_input.text, "%Y-%m-%d")
+            end_date = datetime.strptime(self.end_date_input.text, "%Y-%m-%d")
+        except ValueError:
+            show_popup("Date Error", "Invalid date format. Please use YYYY-MM-DD.")
             return
-
-        target_grid.cols = 7  # Updated column count
-        headers = [
-            "Date",
+        
+        # Check if database path exists
+        if not self.db_path or not os.path.exists(self.db_path):
+            show_popup("Database Error", f"Database file not found: {self.db_path}")
+            return
+        
+        # Fetch all transactions
+        error, transactions_df = get_transactions(
+            self.db_path,
+            start_date,
+            end_date
+        )
+        
+        if error:
+            show_popup("Query Error", error)
+            return
+        
+        # Store transactions for filtering
+        self.all_transactions_df = transactions_df
+        
+        # Apply any existing search filter
+        self.apply_search_filter()
+        
+        # Update the active tab
+        self.on_tab_switch(None, self.tab_panel.current_tab)
+    
+    def trigger_global_query_on_date_change(self, instance, value):
+        """Trigger a global query when date inputs change."""
+        self.run_global_query()
+    
+    def on_tab_switch(self, instance, value):
+        """Handle tab switching."""
+        # Check if the visualization tab is selected
+        if hasattr(self, 'visualization_tab') and value == self.visualization_tab:
+            self.update_visualization()
+            return
+        
+        # Handle "All Transactions" tab
+        if hasattr(self, 'all_transactions_tab') and value == self.all_transactions_tab:
+            # Check if we have transactions
+            if not hasattr(self, 'filtered_transactions_df') or self.filtered_transactions_df.empty:
+                self.all_transactions_status.text = "No transactions found for the selected date range."
+                self.all_transactions_grid.clear_widgets()
+                return
+            
+            # Update status
+            self.all_transactions_status.text = f"Showing {len(self.filtered_transactions_df)} transactions"
+            
+            # Add headers and populate grid
+            headers = ["Date", "Account", "Payee", "Category", "Tags", "Notes", "Amount"]
+            populate_grid_with_dataframe(self.all_transactions_grid, self.filtered_transactions_df, headers)
+            
+            return
+        
+        # Handle account-specific tabs
+        for account_id, account_data in self.account_tabs.items():
+            if value == account_data['tab']:
+                # Get account content
+                content = account_data['content']
+                
+                # Clear grid
+                content.results_grid.clear_widgets()
+                
+                # Filter transactions for this account
+                if hasattr(self, 'filtered_transactions_df'):
+                    account_transactions = self.filtered_transactions_df[
+                        self.filtered_transactions_df['TRANSACTION_ACCOUNTID'] == account_id
+                    ]
+                    
+                    # Update status
+                    content.results_label.text = f"Showing {len(account_transactions)} transactions for {account_data['name']}"
+                    
+                    # Calculate balance
+                    try:
+                        end_date = self.end_date_input.text
+                        error, balance = calculate_balance_for_account(
+                            self.db_path,
+                            account_id,
+                            account_data['initial_balance'],
+                            datetime.strptime(end_date, "%Y-%m-%d")
+                        )
+                        
+                        if error:
+                            content.balance_label.text = f"Balance: Error"
+                        else:
+                            content.balance_label.text = f"Balance: ${balance:.2f}"
+                    except Exception as e:
+                        content.balance_label.text = f"Balance: Error"
+                        print(f"Error calculating balance: {e}")
+                    
+                    # Add headers and populate grid
+                    headers = ["Date", "Payee", "Category", "Tags", "Notes", "Amount"]
+                    populate_grid_with_dataframe(content.results_grid, account_transactions, headers)
+                else:
+                    content.results_label.text = f"No transactions found for {account_data['name']}"
+                
+                break
+    
+    def show_filter_options(self, instance):
+        """Show filter options popup."""
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        
+        # Filter options
+        options = [
+            "All Fields",
             "Account",
             "Payee",
             "Category",
             "Notes",
-            "Amount",
-            "Tags",
-        ]  # Added "Tags" header
-        for header_text in headers:
-            header_label = Label(
-                text=f"[b]{header_text}[/b]",
-                markup=True,
-                size_hint_y=None,
-                height=40,
-                color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG,
-                halign="left",
-                valign="middle",
-            )
-            header_label.bind(size=header_label.setter("text_size"))
-            target_grid.add_widget(header_label)
-
-        for index, row in df.iterrows():
-            trans_date_full = str(row["TRANSDATE"])
-            trans_date = (
-                trans_date_full.split("T")[0]
-                if "T" in trans_date_full
-                else trans_date_full
-            )
-            row_data = [
-                trans_date,
-                str(row["ACCOUNTNAME"]) if pd.notna(row["ACCOUNTNAME"]) else "",
-                str(row["PAYEENAME"]) if pd.notna(row["PAYEENAME"]) else "",
-                str(row["CATEGNAME"]) if pd.notna(row["CATEGNAME"]) else "",
-                str(row["NOTES"]) if pd.notna(row["NOTES"]) else "",
-                str(row["TRANSAMOUNT"]),
-                str(row["TAGNAMES"])
-                if pd.notna(row["TAGNAMES"])
-                else "",  # Added Tags data
-            ]
-            for item in row_data:
-                cell_label = Label(
-                    text=item,
-                    size_hint_y=None,
-                    height=30,
-                    color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG,
-                    halign="left",
-                    valign="middle",
-                )
-                cell_label.bind(size=cell_label.setter("text_size"))
-                target_grid.add_widget(cell_label)
-        if status_label_widget:
-            status_label_widget.text = (
-                f"{status_message_prefix} Found {len(df)} records."
-            )
-
-    def run_global_query(self, instance):
-        """Handles the global query button press."""
-        start_date = self.start_date_input.text
-        end_date = self.end_date_input.text
-
-        # Validate dates early for better UX
-        try:
-            datetime.strptime(start_date, "%Y-%m-%d")
-            datetime.strptime(end_date, "%Y-%m-%d")
-        except ValueError:
-            self.show_popup(
-                "Date Error",
-                f"Invalid date format. Please use YYYY-MM-DD.\nStart: {start_date}, End: {end_date}",
-            )
-            self.all_transactions_status_label.text = "Error: Invalid date format."
-            return
-
-        if not self.db_file_path:
-            self.show_popup("Error", "Database path not configured in .env file.")
-            self.all_transactions_status_label.text = "DB Error. Configure .env file."
-            return
-
-        self.all_transactions_status_label.text = "Status: Querying all transactions..."
-        self.all_transactions_grid.clear_widgets()  # Clear previous global results
-
-        # Fetch ALL transactions for the date range (account_id=None)
-        error_message, df = get_transactions(
-            self.db_file_path,
-            start_date,
-            end_date,
-            account_id=None,
-            # query_tags=True # Potentially add a flag if tag querying is optional
-        )
-
-        self.all_transactions_df = None  # Reset before assigning
-
-        if error_message:
-            self.all_transactions_df = None
-            if "No income/expense records found" in error_message:
-                self.all_transactions_status_label.text = (
-                    "No records found for the selected period (all accounts)."
-                )
-                self._populate_grid_with_dataframe(
-                    self.all_transactions_grid, None, None
-                )
-            else:
-                print(f"Error fetching transactions: {error_message}")
-                self.show_popup("Global Query Error", error_message)
-                self.all_transactions_status_label.text = (
-                    "Global Query failed. See popup."
-                )
-            return
-
-        if df is not None and not df.empty:
-            self.all_transactions_df = df
-
-            # Check if we have an active search filter
-            search_text = (
-                self.search_input.text.strip() if hasattr(self, "search_input") else ""
-            )
-            has_search_filter = bool(search_text)
-
-            if has_search_filter:
-                # If we have an active search filter, apply it
-                self.apply_search_filter(None)
-            else:
-                # Otherwise, populate with all data
-                self._populate_grid_with_dataframe(
-                    self.all_transactions_grid,
-                    self.all_transactions_df,
-                    self.all_transactions_status_label,
-                    "All Transactions:",
-                )
-        else:
-            self.all_transactions_df = None  # Ensure it's None if query returned empty
-            self._populate_grid_with_dataframe(
-                self.all_transactions_grid,
-                None,
-                self.all_transactions_status_label,
-                "All Transactions:",
-            )
-
-        # After global query, refresh the currently active tab if it's an account tab
-        self.on_tab_switch(self.tab_panel, self.tab_panel.current_tab)
-
-    def trigger_global_query_on_date_change(self, instance):
-        """Called when date input fields are validated (Enter or focus loss)."""
-        # The 'instance' is the TextInput widget that triggered the event.
-        self.run_global_query(instance)
-
-    def on_tab_switch(self, tab_panel_instance, current_tab_header):
-        """Called when the current tab changes."""
-        if not current_tab_header or not hasattr(current_tab_header, "content"):
-            return  # No tab selected or tab has no content widget yet
-
-        tab_content_widget = current_tab_header.content
-
-        # Check if we have an active search filter
-        search_text = (
-            self.search_input.text.strip() if hasattr(self, "search_input") else ""
-        )
-        has_search_filter = bool(search_text)
-        filter_type = (
-            self.filter_type.text if hasattr(self, "filter_type") else "All Fields"
-        )
-
-        # If visualization tab is selected, update the charts
-        if current_tab_header == self.visualization_tab:
-            self.update_visualization()
-
-        if current_tab_header == self.all_transactions_tab:
-            # "All Transactions" tab is selected, ensure its grid is populated if data exists
-            if self.all_transactions_df is not None:
-                if has_search_filter:
-                    # Apply the current search filter to the all transactions data
-                    self.apply_search_filter(None)
-                else:
-                    # Show all transactions without filtering
-                    self._populate_grid_with_dataframe(
-                        self.all_transactions_grid,
-                        self.all_transactions_df,
-                        self.all_transactions_status_label,
-                        "All Transactions:",
-                    )
-            else:
-                self._populate_grid_with_dataframe(
-                    self.all_transactions_grid,
-                    None,
-                    self.all_transactions_status_label,
-                    "All Transactions:",
-                )
-                if not self.db_path_label.text.endswith(
-                    "Not Set"
-                ):  # Only show if DB is set
-                    self.all_transactions_status_label.text = (
-                        "Perform a global query to see all transactions."
-                    )
-
-        elif isinstance(tab_content_widget, AccountTabContent):
-            # An account-specific tab is selected
-            account_id_of_tab = tab_content_widget.account_id
-            account_name_of_tab = tab_content_widget.account_name
-            initial_balance_of_tab = tab_content_widget.initial_balance
-
-            end_date_for_balance = self.end_date_input.text
-
-            # Calculate and display balance
-            if self.db_file_path:
-                err_bal, balance = get_balance_as_of_date(
-                    self.db_file_path,
-                    account_id_of_tab,
-                    initial_balance_of_tab,
-                    end_date_for_balance,
-                )
-                if err_bal:
-                    tab_content_widget.balance_label.text = "Balance: Error"
-                    print(
-                        f"Error calculating balance for {account_name_of_tab}: {err_bal}"
-                    )
-                elif balance is not None:
-                    tab_content_widget.balance_label.text = f"Balance: {balance:,.0f}"
-                else:
-                    tab_content_widget.balance_label.text = "Balance: N/A"
-            else:
-                tab_content_widget.balance_label.text = "Balance: DB N/A"
-
-            if self.all_transactions_df is None:
-                tab_content_widget.results_label.text = (
-                    f"Perform a global query first for {account_name_of_tab}."
-                )
-                self._populate_grid_with_dataframe(
-                    tab_content_widget.results_grid, None, None
-                )
-            else:
-                if has_search_filter:
-                    # Apply the current search filter to this account's data
-                    filtered_df = self.all_transactions_df.copy()
-
-                    # Apply search filter based on selected filter type
-                    if filter_type == "All Fields":
-                        mask = (
-                            filtered_df["PAYEENAME"]
-                            .astype(str)
-                            .str.lower()
-                            .str.contains(search_text.lower(), na=False)
-                            | filtered_df["CATEGNAME"]
-                            .astype(str)
-                            .str.lower()
-                            .str.contains(search_text.lower(), na=False)
-                            | filtered_df["NOTES"]
-                            .astype(str)
-                            .str.lower()
-                            .str.contains(search_text.lower(), na=False)
-                            | filtered_df["TAGNAMES"]
-                            .astype(str)
-                            .str.lower()
-                            .str.contains(search_text.lower(), na=False)
-                        )
-                    elif filter_type == "Payee":
-                        mask = (
-                            filtered_df["PAYEENAME"]
-                            .astype(str)
-                            .str.lower()
-                            .str.contains(search_text.lower(), na=False)
-                        )
-                    elif filter_type == "Category":
-                        mask = (
-                            filtered_df["CATEGNAME"]
-                            .astype(str)
-                            .str.lower()
-                            .str.contains(search_text.lower(), na=False)
-                        )
-                    elif filter_type == "Notes":
-                        mask = (
-                            filtered_df["NOTES"]
-                            .astype(str)
-                            .str.lower()
-                            .str.contains(search_text.lower(), na=False)
-                        )
-                    elif filter_type == "Tags":
-                        mask = (
-                            filtered_df["TAGNAMES"]
-                            .astype(str)
-                            .str.lower()
-                            .str.contains(search_text.lower(), na=False)
-                        )
-                    else:
-                        # Default to all fields
-                        mask = (
-                            filtered_df["PAYEENAME"]
-                            .astype(str)
-                            .str.lower()
-                            .str.contains(search_text.lower(), na=False)
-                            | filtered_df["CATEGNAME"]
-                            .astype(str)
-                            .str.lower()
-                            .str.contains(search_text.lower(), na=False)
-                            | filtered_df["NOTES"]
-                            .astype(str)
-                            .str.lower()
-                            .str.contains(search_text.lower(), na=False)
-                            | filtered_df["TAGNAMES"]
-                            .astype(str)
-                            .str.lower()
-                            .str.contains(search_text.lower(), na=False)
-                        )
-
-                    # Apply the search filter
-                    filtered_df = filtered_df[mask]
-
-                    # Then filter by account ID
-                    account_filtered_df = filtered_df[
-                        filtered_df["TRANSACTION_ACCOUNTID"] == account_id_of_tab
-                    ]
-
-                    self._populate_grid_with_dataframe(
-                        tab_content_widget.results_grid,
-                        account_filtered_df,
-                        tab_content_widget.results_label,
-                        f"{account_name_of_tab} (filtered by {filter_type}):",
-                    )
-                else:
-                    # Filter the global DataFrame for this specific account tab without search filtering
-                    filtered_df = self.all_transactions_df[
-                        self.all_transactions_df["TRANSACTION_ACCOUNTID"]
-                        == account_id_of_tab
-                    ]
-
-                    self._populate_grid_with_dataframe(
-                        tab_content_widget.results_grid,
-                        filtered_df,
-                        tab_content_widget.results_label,
-                        f"{account_name_of_tab}:",
-                    )
-        else:
-            # Some other type of tab content, or content not yet set
-            pass
-
-    def show_popup(self, title, message):
-        """Displays a popup message to the user."""
-        popup_layout = BoxLayout(orientation="vertical", padding=10, spacing=10)
-        # Popups usually have a light background, so black text is fine here.
-        popup_label = Label(text=message, color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG)
-        close_button = Button(text="Close", size_hint_y=None, height=40)
-        popup_layout.add_widget(popup_label)
-        popup_layout.add_widget(close_button)  # type: ignore
-        popup = Popup(title=title, content=popup_layout, size_hint=(0.8, 0.4))
-        close_button.bind(on_press=popup.dismiss)
-        popup.open()
-
-    def show_filter_options(self, instance):
-        """Shows a popup with filter options."""
-        filter_options = ["All Fields", "Payee", "Category", "Notes", "Tags"]
-
-        popup_layout = BoxLayout(orientation="vertical", padding=10, spacing=5)
-        popup_label = Label(
-            text="Select field to filter by:",
-            size_hint_y=None,
-            height=30,
-            color=DEFAULT_TEXT_COLOR_ON_LIGHT_BG,
-        )
-        popup_layout.add_widget(popup_label)
-
-        # Add buttons for each filter option
-        for option in filter_options:
-            option_button = Button(text=option, size_hint_y=None, height=40)
-            option_button.bind(
-                on_press=lambda btn, opt=option: self.select_filter_option(opt, popup)
-            )
-            popup_layout.add_widget(option_button)
-
+            "Tags"
+        ]
+        
+        for option in options:
+            btn = Button(text=option, size_hint_y=None, height=40)
+            btn.bind(on_release=lambda btn, opt=option: self.select_filter_option(opt, popup))
+            content.add_widget(btn)
+        
         # Cancel button
-        cancel_button = Button(text="Cancel", size_hint_y=None, height=40)
-        popup_layout.add_widget(cancel_button)
-
-        popup = Popup(
-            title="Filter Options", content=popup_layout, size_hint=(0.8, 0.6)
-        )
-        cancel_button.bind(on_press=popup.dismiss)
-
-        for child in popup_layout.children:
-            if isinstance(child, Button) and child.text in filter_options:
-                child.bind(
-                    on_press=lambda btn,
-                    opt=child.text,
-                    pop=popup: self.select_filter_option(opt, pop)
-                )
-
+        cancel_btn = Button(text="Cancel", size_hint_y=None, height=40)
+        cancel_btn.bind(on_release=lambda x: popup.dismiss())
+        content.add_widget(cancel_btn)
+        
+        popup = Popup(title="Select Filter Type", content=content, size_hint=(0.8, 0.8))
         popup.open()
-
+    
     def select_filter_option(self, option, popup):
-        """Sets the selected filter option and closes the popup."""
-        self.filter_type.text = option
+        """Select a filter option."""
+        self.filter_button.text = option
         popup.dismiss()
-        # Apply the filter with the new option if there's text in the search box
-        if self.search_input.text.strip():
-            self.apply_search_filter(None)
-
-    def apply_search_filter(self, instance):
-        """Applies the search filter to the current data."""
-        search_text = self.search_input.text.strip().lower()
-
+        self.apply_search_filter()
+    
+    def apply_search_filter(self, *args):
+        """Apply search filter to transactions."""
+        if not hasattr(self, 'all_transactions_df') or self.all_transactions_df.empty:
+            return
+        
+        search_text = self.search_input.text.lower()
+        filter_type = self.filter_button.text
+        
         if not search_text:
-            self.clear_search_filter(None)
-            return
-
-        if self.all_transactions_df is None or self.all_transactions_df.empty:
-            self.show_popup(
-                "Search Error", "No data available to search. Please run a query first."
-            )
-            return
-
-        # Create a copy of the original dataframe to filter
-        filtered_df = self.all_transactions_df.copy()
-
-        # Apply filter based on selected filter type
-        filter_type = self.filter_type.text
-
-        if filter_type == "All Fields":
-            # Search in all relevant columns
-            mask = (
-                filtered_df["PAYEENAME"]
-                .astype(str)
-                .str.lower()
-                .str.contains(search_text, na=False)
-                | filtered_df["CATEGNAME"]
-                .astype(str)
-                .str.lower()
-                .str.contains(search_text, na=False)
-                | filtered_df["NOTES"]
-                .astype(str)
-                .str.lower()
-                .str.contains(search_text, na=False)
-                | filtered_df["TAGNAMES"]
-                .astype(str)
-                .str.lower()
-                .str.contains(search_text, na=False)
-            )
-        elif filter_type == "Payee":
-            mask = (
-                filtered_df["PAYEENAME"]
-                .astype(str)
-                .str.lower()
-                .str.contains(search_text, na=False)
-            )
-        elif filter_type == "Category":
-            mask = (
-                filtered_df["CATEGNAME"]
-                .astype(str)
-                .str.lower()
-                .str.contains(search_text, na=False)
-            )
-        elif filter_type == "Notes":
-            mask = (
-                filtered_df["NOTES"]
-                .astype(str)
-                .str.lower()
-                .str.contains(search_text, na=False)
-            )
-        elif filter_type == "Tags":
-            mask = (
-                filtered_df["TAGNAMES"]
-                .astype(str)
-                .str.lower()
-                .str.contains(search_text, na=False)
-            )
+            # No filter, show all transactions
+            self.filtered_transactions_df = self.all_transactions_df
         else:
-            # Default to all fields if somehow an invalid option is selected
-            mask = (
-                filtered_df["PAYEENAME"]
-                .astype(str)
-                .str.lower()
-                .str.contains(search_text, na=False)
-                | filtered_df["CATEGNAME"]
-                .astype(str)
-                .str.lower()
-                .str.contains(search_text, na=False)
-                | filtered_df["NOTES"]
-                .astype(str)
-                .str.lower()
-                .str.contains(search_text, na=False)
-                | filtered_df["TAGNAMES"]
-                .astype(str)
-                .str.lower()
-                .str.contains(search_text, na=False)
-            )
-
-        # Apply the filter
-        filtered_df = filtered_df[mask]
-
-        # Update the current tab with filtered data
-        current_tab = self.tab_panel.current_tab
-
-        if current_tab == self.all_transactions_tab:
-            # Update the All Transactions tab
-            self._populate_grid_with_dataframe(
-                self.all_transactions_grid,
-                filtered_df,
-                self.all_transactions_status_label,
-                f"Search results ({filter_type}):",
-            )
-        elif hasattr(current_tab, "content") and isinstance(
-            current_tab.content, AccountTabContent
-        ):
-            # Update the account-specific tab
-            tab_content = current_tab.content
-            account_id = tab_content.account_id
-
-            # Further filter by account ID
-            account_filtered_df = filtered_df[
-                filtered_df["TRANSACTION_ACCOUNTID"] == account_id
-            ]
-
-            self._populate_grid_with_dataframe(
-                tab_content.results_grid,
-                account_filtered_df,
-                tab_content.results_label,
-                f"{tab_content.account_name} (filtered):",
-            )
-
+            # Apply filter based on selected type
+            if filter_type == "All Fields":
+                # Search in all text columns
+                mask = False
+                for col in ['ACCOUNTNAME', 'PAYEENAME', 'CATEGNAME', 'NOTES', 'TAGNAMES']:
+                    mask = mask | self.all_transactions_df[col].astype(str).str.lower().str.contains(search_text, na=False)
+                self.filtered_transactions_df = self.all_transactions_df[mask]
+            elif filter_type == "Account":
+                mask = self.all_transactions_df['ACCOUNTNAME'].astype(str).str.lower().str.contains(search_text, na=False)
+                self.filtered_transactions_df = self.all_transactions_df[mask]
+            elif filter_type == "Payee":
+                mask = self.all_transactions_df['PAYEENAME'].astype(str).str.lower().str.contains(search_text, na=False)
+                self.filtered_transactions_df = self.all_transactions_df[mask]
+            elif filter_type == "Category":
+                mask = self.all_transactions_df['CATEGNAME'].astype(str).str.lower().str.contains(search_text, na=False)
+                self.filtered_transactions_df = self.all_transactions_df[mask]
+            elif filter_type == "Notes":
+                mask = self.all_transactions_df['NOTES'].astype(str).str.lower().str.contains(search_text, na=False)
+                self.filtered_transactions_df = self.all_transactions_df[mask]
+            elif filter_type == "Tags":
+                mask = self.all_transactions_df['TAGNAMES'].astype(str).str.lower().str.contains(search_text, na=False)
+                self.filtered_transactions_df = self.all_transactions_df[mask]
+        
+        # Update the active tab
+        self.on_tab_switch(None, self.tab_panel.current_tab)
+    
     def clear_search_filter(self, instance):
-        """Clears the search filter and restores the original data display."""
+        """Clear search filter."""
         self.search_input.text = ""
-        self.filter_type.text = "All Fields"
-
-        # Refresh the current tab with unfiltered data
-        self.on_tab_switch(self.tab_panel, self.tab_panel.current_tab)
-
+        self.filter_button.text = "All Fields"
+        if hasattr(self, 'all_transactions_df'):
+            self.filtered_transactions_df = self.all_transactions_df
+            self.on_tab_switch(None, self.tab_panel.current_tab)
+    
     def update_visualization(self):
-        """Updates the visualization based on the selected chart type."""
-        if (
-            not hasattr(self, "visualization_content")
-            or not hasattr(self, "all_transactions_df")
-            or self.all_transactions_df is None
-        ):
-            return
-
-        # Clear previous chart
+        """Update the visualization based on the selected chart type."""
+        # Clear existing chart
         self.visualization_content.chart_layout.clear_widgets()
-
-        # Get selected chart type
-        chart_type = self.visualization_content.chart_type_btn.text
-
-        if self.all_transactions_df.empty:
+        
+        # Check if we have transaction data
+        if not hasattr(self, 'filtered_transactions_df') or self.filtered_transactions_df.empty:
             self.visualization_content.chart_layout.add_widget(
-                Label(
-                    text="No data available for visualization. Please run a query first.",
-                    color=DEFAULT_TEXT_COLOR_ON_DARK_BG,
-                )
+                Label(text="No transaction data available for visualization")
             )
             return
-
-        # Create the appropriate chart based on selection
-        if chart_type == "Spending by Category":
-            self._create_category_spending_chart()
-        elif chart_type == "Spending Over Time":
-            self._create_spending_over_time_chart()
-        elif chart_type == "Income vs Expenses":
-            self._create_income_vs_expenses_chart()
-        elif chart_type == "Top Payees":
-            self._create_top_payees_chart()
-
-    def _create_category_spending_chart(self):
-        """Creates a pie chart showing spending by category."""
-        # Filter for expenses (negative amounts)
-        expenses_df = self.all_transactions_df[
-            self.all_transactions_df["TRANSAMOUNT"] < 0
-        ].copy()
-
-        if expenses_df.empty:
-            self.visualization_content.chart_layout.add_widget(
-                Label(
-                    text="No expense data available for the selected period.",
-                    color=DEFAULT_TEXT_COLOR_ON_DARK_BG,
-                )
-            )
-            return
-
-        # Group by category and sum amounts (make positive for better visualization)
-        expenses_df["TRANSAMOUNT"] = expenses_df["TRANSAMOUNT"].abs()
-        category_spending = (
-            expenses_df.groupby("CATEGNAME")["TRANSAMOUNT"]
-            .sum()
-            .sort_values(ascending=False)
-        )
-
-        # Limit to top 10 categories for readability
-        if len(category_spending) > 10:
-            other_amount = category_spending[10:].sum()
-            category_spending = category_spending[:10]
-            category_spending["Other"] = other_amount
-
-        # Create the figure and plot
-        plt.clf()
-        fig, ax = plt.subplots(figsize=(10, 6))
-
-        # Create pie chart
-        wedges, texts, autotexts = ax.pie(
-            category_spending.values,
-            labels=category_spending.index,
-            autopct="%1.1f%%",
-            textprops={"color": "black", "fontsize": 8},
-            startangle=90,
-        )
-
-        # Equal aspect ratio ensures that pie is drawn as a circle
-        ax.axis("equal")
-        plt.title("Spending by Category")
-
-        # Create canvas
-        chart_canvas = FigureCanvasKivyAgg(fig)
-        self.visualization_content.chart_layout.add_widget(chart_canvas)
-
-    def _create_spending_over_time_chart(self):
-        """Creates a line chart showing spending over time."""
-        # Make a copy of the dataframe
-        df = self.all_transactions_df.copy()
-
-        # Convert date strings to datetime objects
-        df["TRANSDATE"] = pd.to_datetime(df["TRANSDATE"])
-
-        # Group by date and calculate daily spending (expenses are negative)
-        daily_spending = df.groupby(df["TRANSDATE"].dt.date)["TRANSAMOUNT"].sum()
-
-        # Create the figure and plot
-        plt.clf()
-        fig, ax = plt.subplots(figsize=(10, 6))
-
-        # Plot the data
-        ax.plot(daily_spending.index, daily_spending.values, marker="o", linestyle="-")
-
-        # Add labels and title
-        ax.set_xlabel("Date")
-        ax.set_ylabel("Amount")
-        ax.set_title("Transactions Over Time")
-
-        # Rotate date labels for better readability
-        plt.xticks(rotation=45)
-
-        # Adjust layout
-        plt.tight_layout()
-
-        # Create canvas
-        chart_canvas = FigureCanvasKivyAgg(fig)
-        self.visualization_content.chart_layout.add_widget(chart_canvas)
-
-    def _create_income_vs_expenses_chart(self):
-        """Creates a bar chart comparing income vs expenses."""
-        # Make a copy of the dataframe
-        df = self.all_transactions_df.copy()
-
-        # Convert date strings to datetime objects
-        df["TRANSDATE"] = pd.to_datetime(df["TRANSDATE"])
-
-        # Add a month column for grouping
-        df["Month"] = df["TRANSDATE"].dt.to_period("M")
-
-        # Separate income and expenses
-        income_df = df[df["TRANSAMOUNT"] > 0]
-        expense_df = df[df["TRANSAMOUNT"] < 0]
-
-        # Group by month
-        monthly_income = income_df.groupby("Month")["TRANSAMOUNT"].sum()
-        monthly_expenses = (
-            expense_df.groupby("Month")["TRANSAMOUNT"].sum().abs()
-        )  # Make positive for visualization
-
-        # Create a DataFrame with both income and expenses
-        monthly_data = pd.DataFrame(
-            {"Income": monthly_income, "Expenses": monthly_expenses}
-        )
-
-        # Fill NaN values with 0
-        monthly_data.fillna(0, inplace=True)
-
-        # Create the figure and plot
-        plt.clf()
-        fig, ax = plt.subplots(figsize=(10, 6))
-
-        # Plot the data
-        monthly_data.plot(kind="bar", ax=ax)
-
-        # Add labels and title
-        ax.set_xlabel("Month")
-        ax.set_ylabel("Amount")
-        ax.set_title("Monthly Income vs Expenses")
-
-        # Rotate date labels for better readability
-        plt.xticks(rotation=45)
-
-        # Add a legend
-        ax.legend()
-
-        # Adjust layout
-        plt.tight_layout()
-
-        # Create canvas
-        chart_canvas = FigureCanvasKivyAgg(fig)
-        self.visualization_content.chart_layout.add_widget(chart_canvas)
-
-    def _create_top_payees_chart(self):
-        """Creates a horizontal bar chart showing top payees by spending."""
-        # Filter for expenses (negative amounts)
-        expenses_df = self.all_transactions_df[
-            self.all_transactions_df["TRANSAMOUNT"] < 0
-        ].copy()
-
-        if expenses_df.empty:
-            self.visualization_content.chart_layout.add_widget(
-                Label(
-                    text="No expense data available for the selected period.",
-                    color=DEFAULT_TEXT_COLOR_ON_DARK_BG,
-                )
-            )
-            return
-
-        # Group by payee and sum amounts (make positive for better visualization)
-        expenses_df["TRANSAMOUNT"] = expenses_df["TRANSAMOUNT"].abs()
-        payee_spending = (
-            expenses_df.groupby("PAYEENAME")["TRANSAMOUNT"]
-            .sum()
-            .sort_values(ascending=True)
-        )
-
-        # Limit to top 15 payees for readability
-        if len(payee_spending) > 15:
-            payee_spending = payee_spending.tail(15)
-
-        # Create the figure and plot
-        plt.clf()
-        fig, ax = plt.subplots(figsize=(10, 6))
-
-        # Plot horizontal bar chart
-        payee_spending.plot(kind="barh", ax=ax)
-
-        # Add labels and title
-        ax.set_xlabel("Amount")
-        ax.set_ylabel("Payee")
-        ax.set_title("Top Payees by Spending")
-
-        # Adjust layout
-        plt.tight_layout()
-
-        # Create canvas
-        chart_canvas = FigureCanvasKivyAgg(fig)
-        self.visualization_content.chart_layout.add_widget(chart_canvas)
-
+        
+        # Create chart based on selected type
+        self.visualization_content.update_chart(self.filtered_transactions_df)
+    
     def exit_app(self, instance):
-        """Closes the application."""
+        """Exit the application."""
         App.get_running_app().stop()
 
 
 class MMEXKivyApp(App):
-    """The main Kivy application class."""
-
+    """Main application class."""
+    
     def build(self):
-        Window.clearcolor = (0.99, 0.99, 0.99, 1)
-        actual_font_path = UNICODE_FONT_PATH
-        if not os.path.isabs(actual_font_path):
-            actual_font_path = os.path.join(SCRIPT_DIR, actual_font_path)
-        try:
-            if not os.path.exists(actual_font_path):
-                print(
-                    f"Warning: Font file '{actual_font_path}' not found. "
-                    "Kivy will use its default font."
-                )
-                print(
-                    f"Please ensure you have placed a font file supporting "
-                    f"non-English characters at '{SCRIPT_DIR}' or provide "
-                    "the correct UNICODE_FONT_PATH."
-                )
-            else:
-                kv_font_path = actual_font_path.replace("\\", "\\\\")
-                kv_string = f"""
-<Label>:
-    font_name: '{kv_font_path}'
-<TextInput>:
-    font_name: '{kv_font_path}'
-<Button>:
-    font_name: '{kv_font_path}'
-<TabbedPanelHeader>:
-    font_name: '{kv_font_path}'
-"""
-                Builder.load_string(kv_string)
-                print(f"Successfully set default font to: {actual_font_path}")
-        except Exception as e:
-            print(
-                f"Error setting global font '{actual_font_path}': {e}. "
-                "Kivy will use its default font."
-            )
+        # Set window size
+        Window.size = (1200, 800)
+        Window.minimum_width, Window.minimum_height = 800, 600
+        
+        # Set global font
+        Builder.load_string(f'''
+        #:kivy 2.1.0
+        <Label>:
+            font_name: '{UNICODE_FONT_PATH}'
+        <Button>:
+            font_name: '{UNICODE_FONT_PATH}'
+        <TextInput>:
+            font_name: '{UNICODE_FONT_PATH}'
+        ''')
+        
         return MMEXAppLayout()
 
 
 if __name__ == "__main__":
-    print("--- MMEX Database Schema Configuration ---")
-    for name, value in globals().copy().items():
-        if name.startswith("DB_TABLE_") or name.startswith("DB_FIELD_"):
-            # print(f"Global var: {name} = {value}")
-            print(f"{name}: {value}")
-    print("----------------------------------------")
-
-    os.chdir(SCRIPT_DIR)
     MMEXKivyApp().run()
