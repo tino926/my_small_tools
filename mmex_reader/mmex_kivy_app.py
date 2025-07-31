@@ -84,6 +84,10 @@ class MMEXAppLayout(BoxLayout):
 
         # Database path
         self.db_path = load_db_path()
+        
+        # Add sorting state variables
+        self.current_sort_column = None
+        self.current_sort_ascending = True
 
         # Date range inputs
         self._create_date_inputs()
@@ -334,6 +338,44 @@ class MMEXAppLayout(BoxLayout):
         """Trigger a global query when date inputs change."""
         self.run_global_query()
 
+    def sort_transactions(self, column_name, ascending):
+        """Sort transactions by the specified column.
+        
+        Args:
+            column_name: The column to sort by
+            ascending: Whether to sort in ascending order
+        """
+        if not hasattr(self, 'filtered_transactions_df') or self.filtered_transactions_df.empty:
+            return
+        
+        # Store current sort state
+        self.current_sort_column = column_name
+        self.current_sort_ascending = ascending
+        
+        # Sort the dataframe
+        try:
+            if column_name == 'TRANSAMOUNT':
+                # Handle numeric sorting for amount
+                self.filtered_transactions_df = self.filtered_transactions_df.sort_values(
+                    by=column_name, ascending=ascending, na_position='last'
+                )
+            elif column_name == 'TRANSDATE':
+                # Handle date sorting
+                self.filtered_transactions_df = self.filtered_transactions_df.sort_values(
+                    by=column_name, ascending=ascending, na_position='last'
+                )
+            else:
+                # Handle text sorting
+                self.filtered_transactions_df = self.filtered_transactions_df.sort_values(
+                    by=column_name, ascending=ascending, na_position='last', key=lambda x: x.astype(str).str.lower()
+                )
+        except Exception as e:
+            print(f"Error sorting by {column_name}: {e}")
+            return
+        
+        # Refresh the current tab display
+        self.on_tab_switch(None, self.tab_panel.current_tab)
+
     def on_tab_switch(self, instance, value):
         """Handle tab switching."""
         # Check if the visualization tab is selected
@@ -359,7 +401,7 @@ class MMEXAppLayout(BoxLayout):
                 f"Showing {len(self.filtered_transactions_df)} transactions"
             )
 
-            # Add headers and populate grid
+            # Add headers and populate grid with sorting capability
             headers = [
                 "Date",
                 "Account",
@@ -370,7 +412,10 @@ class MMEXAppLayout(BoxLayout):
                 "Amount",
             ]
             populate_grid_with_dataframe(
-                self.all_transactions_grid, self.filtered_transactions_df, headers
+                self.all_transactions_grid, 
+                self.filtered_transactions_df, 
+                headers,
+                sort_callback=self.sort_transactions
             )
 
             return
@@ -412,10 +457,13 @@ class MMEXAppLayout(BoxLayout):
                         content.balance_label.text = f"Balance: Error"
                         print(f"Error calculating balance: {e}")
 
-                    # Add headers and populate grid
+                    # Add headers and populate grid with sorting capability
                     headers = ["Date", "Payee", "Category", "Tags", "Notes", "Amount"]
                     populate_grid_with_dataframe(
-                        content.results_grid, account_transactions, headers
+                        content.results_grid, 
+                        account_transactions, 
+                        headers,
+                        sort_callback=self.sort_transactions
                     )
                 else:
                     content.results_label.text = (

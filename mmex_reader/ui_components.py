@@ -11,6 +11,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 from kivy.graphics import Color, Rectangle
+import pandas as pd
 
 # UI color constants
 BG_COLOR = (0.9, 0.9, 0.9, 1)  # Light gray background
@@ -102,6 +103,37 @@ def show_popup(title, message):
     
     popup.open()
 
+class SortableHeaderButton(Button):
+    """A button that can be used as a sortable column header."""
+    
+    def __init__(self, text, column_name, sort_callback, **kwargs):
+        super(SortableHeaderButton, self).__init__(**kwargs)
+        self.text = text
+        self.column_name = column_name
+        self.sort_callback = sort_callback
+        self.sort_ascending = True  # Track sort direction
+        self.size_hint_y = None
+        self.height = 40
+        self.bold = True
+        self.background_color = HEADER_COLOR
+        self.color = (1, 1, 1, 1)  # White text
+        
+        # Bind click event
+        self.bind(on_release=self.on_header_click)
+    
+    def on_header_click(self, instance):
+        """Handle header click for sorting."""
+        # Toggle sort direction
+        self.sort_ascending = not self.sort_ascending
+        
+        # Update button text to show sort direction
+        direction_symbol = " ↑" if self.sort_ascending else " ↓"
+        base_text = self.text.replace(" ↑", "").replace(" ↓", "")
+        self.text = base_text + direction_symbol
+        
+        # Call the sort callback
+        self.sort_callback(self.column_name, self.sort_ascending)
+
 def create_header_label(text):
     """Create a styled header label.
     
@@ -133,13 +165,14 @@ def create_header_label(text):
     
     return label
 
-def populate_grid_with_dataframe(grid, df, headers=None):
+def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None):
     """Populate a grid layout with data from a DataFrame.
     
     Args:
         grid: The GridLayout to populate
         df: The DataFrame containing the data
         headers: Optional list of column headers
+        sort_callback: Optional callback function for sorting
     """
     # Clear existing widgets
     grid.clear_widgets()
@@ -157,8 +190,29 @@ def populate_grid_with_dataframe(grid, df, headers=None):
     
     # Add headers if provided
     if headers:
+        # Map headers to actual column names
+        column_mapping = {
+            "Date": "TRANSDATE",
+            "Account": "ACCOUNTNAME", 
+            "Payee": "PAYEENAME",
+            "Category": "CATEGNAME",
+            "Tags": "TAGNAMES",
+            "Notes": "NOTES",
+            "Amount": "TRANSAMOUNT"
+        }
+        
         for header in headers:
-            grid.add_widget(create_header_label(header))
+            if sort_callback and header in column_mapping:
+                # Create sortable header button
+                header_btn = SortableHeaderButton(
+                    text=header,
+                    column_name=column_mapping[header],
+                    sort_callback=sort_callback
+                )
+                grid.add_widget(header_btn)
+            else:
+                # Create regular header label
+                grid.add_widget(create_header_label(header))
     
     # Add data rows
     for _, row in df.iterrows():
