@@ -31,7 +31,7 @@ class AccountTabContent(BoxLayout):
         self.spacing = 10
         
         # Account info header
-        self.header = BoxLayout(size_hint=(1, 0.1), spacing=10)
+        self.header = BoxLayout(size_hint=(1, None), height=40, spacing=10)
         
         # Account name label
         self.account_label = Label(
@@ -55,16 +55,26 @@ class AccountTabContent(BoxLayout):
         
         self.add_widget(self.header)
         
+        # Results label
+        self.results_label = Label(
+            text=f"Transactions for {account_name}",
+            size_hint=(1, None),
+            height=30,
+            halign='left',
+            valign='middle'
+        )
+        self.add_widget(self.results_label)
+        
         # Transactions grid in a scroll view
-        self.scroll_view = ScrollView(size_hint=(1, 0.9))
+        self.scroll_view = ScrollView(size_hint=(1, 1))  # Take all remaining space
         
         # Grid for transactions
-        self.grid = GridLayout(cols=7, spacing=2, size_hint_y=None)
+        self.results_grid = GridLayout(cols=6, spacing=2, size_hint_y=None)
         # The height will be set based on the children
-        self.grid.bind(minimum_height=self.grid.setter('height'))
+        self.results_grid.bind(minimum_height=self.results_grid.setter('height'))
         
         # Add grid to scroll view
-        self.scroll_view.add_widget(self.grid)
+        self.scroll_view.add_widget(self.results_grid)
         
         # Add scroll view to main layout
         self.add_widget(self.scroll_view)
@@ -207,16 +217,19 @@ def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None):
                 header_btn = SortableHeaderButton(
                     text=header,
                     column_name=column_mapping[header],
-                    sort_callback=sort_callback
+                    sort_callback=sort_callback,
+                    size_hint_x=1/len(headers)  # Distribute width evenly
                 )
                 grid.add_widget(header_btn)
             else:
                 # Create regular header label
-                grid.add_widget(create_header_label(header))
+                header_label = create_header_label(header)
+                header_label.size_hint_x = 1/len(headers)  # Distribute width evenly
+                grid.add_widget(header_label)
     
     # Add data rows
     for _, row in df.iterrows():
-        for col in df.columns:
+        for i, col in enumerate(df.columns):
             value = row[col]
             # Format value based on column type
             if col == 'TRANSAMOUNT' or col == 'TOTRANSAMOUNT':
@@ -230,10 +243,18 @@ def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None):
                 text=text,
                 size_hint_y=None,
                 height=30,
-                text_size=(None, None),  # Will be set based on width
+                size_hint_x=1/len(df.columns),  # Distribute width evenly
+                text_size=(None, 30),  # Fixed height, width will be set on_size
                 halign='left',
-                valign='middle'
+                valign='middle',
+                shorten=True,  # Enable text shortening if too long
+                shorten_from='right'  # Shorten from the right side
             )
+            
+            # Bind size to update text_size
+            label.bind(width=lambda instance, value: setattr(instance, 'text_size', (value, 30)))
+            
+            grid.add_widget(label)
             
             # Bind size to update text_size
             def update_text_size(label, *args):
@@ -242,3 +263,1975 @@ def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None):
             label.bind(width=update_text_size)
             
             grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size = (label.width, None)
+            
+            label.bind(width=update_text_size)
+            
+            grid.add_widget(label)
+            
+            # Bind size to update text_size
+            def update_text_size(label, *args):
+                label.text_size

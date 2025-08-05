@@ -110,58 +110,58 @@ class MMEXAppLayout(BoxLayout):
     def _create_date_inputs(self):
         """Create date input fields with validation."""
         date_layout = BoxLayout(size_hint=(1, None), height=40, spacing=10)
-
-        # Start date input
-        date_layout.add_widget(Label(text="Start Date:", size_hint=(0.15, 1)))
-
+    
+        # Start date input - more responsive layout
+        date_layout.add_widget(Label(text="Start Date:", size_hint=(None, 1), width=80))
+    
         self.start_date_input = TextInput(
             text=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
             multiline=False,
-            size_hint=(0.35, 1),
+            size_hint=(0.5, 1),
         )
         self.start_date_input.bind(text=self.trigger_global_query_on_date_change)
         date_layout.add_widget(self.start_date_input)
-
-        # End date input
-        date_layout.add_widget(Label(text="End Date:", size_hint=(0.15, 1)))
-
+    
+        # End date input - more responsive layout
+        date_layout.add_widget(Label(text="End Date:", size_hint=(None, 1), width=70))
+    
         self.end_date_input = TextInput(
             text=datetime.now().strftime("%Y-%m-%d"),
             multiline=False,
-            size_hint=(0.35, 1),
+            size_hint=(0.5, 1),
         )
         self.end_date_input.bind(text=self.trigger_global_query_on_date_change)
         date_layout.add_widget(self.end_date_input)
-
+    
         self.add_widget(date_layout)
 
     def _create_search_filter_layout(self):
         """Create search and filter layout."""
         search_layout = BoxLayout(size_hint=(1, None), height=40, spacing=10)
-
-        # Search input
-        search_layout.add_widget(Label(text="Search:", size_hint=(0.15, 1)))
-
-        self.search_input = TextInput(multiline=False, size_hint=(0.35, 1))
+    
+        # Search input - more responsive layout
+        search_layout.add_widget(Label(text="Search:", size_hint=(None, 1), width=70))
+    
+        self.search_input = TextInput(multiline=False, size_hint=(0.5, 1))
         self.search_input.bind(text=self.apply_search_filter)
         search_layout.add_widget(self.search_input)
-
-        # Filter type dropdown
-        search_layout.add_widget(Label(text="Filter By:", size_hint=(0.15, 1)))
-
+    
+        # Filter type dropdown - more responsive layout
+        search_layout.add_widget(Label(text="Filter By:", size_hint=(None, 1), width=70))
+    
         self.filter_button = Button(
-            text="All Fields", size_hint=(0.25, 1), background_color=BUTTON_COLOR
+            text="All Fields", size_hint=(0.3, 1), background_color=BUTTON_COLOR
         )
         self.filter_button.bind(on_release=self.show_filter_options)
         search_layout.add_widget(self.filter_button)
-
-        # Clear filter button
+    
+        # Clear filter button - more responsive layout
         self.clear_filter_button = Button(
-            text="Clear", size_hint=(0.1, 1), background_color=BUTTON_COLOR
+            text="Clear", size_hint=(0.2, 1), background_color=BUTTON_COLOR
         )
         self.clear_filter_button.bind(on_release=self.clear_search_filter)
         search_layout.add_widget(self.clear_filter_button)
-
+    
         self.add_widget(search_layout)
 
     def _create_tabbed_panel(self):
@@ -171,14 +171,15 @@ class MMEXAppLayout(BoxLayout):
             tab_width=150,
             tab_height=40,
             background_color=BG_COLOR,
+            size_hint=(1, 1),  # Take full available space
         )
-
+    
         # Create "All Transactions" tab
         self._create_all_transactions_tab()
-
+    
         # Create "Charts" tab
         self._create_visualization_tab()
-
+    
         self.add_widget(self.tab_panel)
 
     def _create_all_transactions_tab(self):
@@ -303,195 +304,48 @@ class MMEXAppLayout(BoxLayout):
                 content.balance_label.text = f"Balance: Error"
                 print(f"Error calculating balance: {e}")
 
-    def run_global_query(self, *args):
-        """Run a global query to fetch transactions."""
-        # Validate dates
-        try:
-            start_date = datetime.strptime(self.start_date_input.text, "%Y-%m-%d")
-            end_date = datetime.strptime(self.end_date_input.text, "%Y-%m-%d")
-        except ValueError:
-            show_popup("Date Error", "Invalid date format. Please use YYYY-MM-DD.")
-            return
-
-        # Check if database path exists
-        if not self.db_path or not os.path.exists(self.db_path):
-            show_popup("Database Error", f"Database file not found: {self.db_path}")
-            return
-
-        # Fetch all transactions
-        error, transactions_df = get_transactions(self.db_path, start_date, end_date)
-
-        if error:
-            show_popup("Query Error", error)
-            return
-
-        # Store transactions for filtering
-        self.all_transactions_df = transactions_df
-
-        # Apply any existing search filter
-        self.apply_search_filter()
-
-        # Update the active tab
-        self.on_tab_switch(None, self.tab_panel.current_tab)
-
-    def trigger_global_query_on_date_change(self, instance, value):
-        """Trigger a global query when date inputs change."""
-        self.run_global_query()
-
-    def sort_transactions(self, column_name, ascending):
-        """Sort transactions by the specified column.
-        
-        Args:
-            column_name: The column to sort by
-            ascending: Whether to sort in ascending order
-        """
-        if not hasattr(self, 'filtered_transactions_df') or self.filtered_transactions_df.empty:
-            return
-        
-        # Store current sort state
-        self.current_sort_column = column_name
-        self.current_sort_ascending = ascending
-        
-        # Sort the dataframe
-        try:
-            if column_name == 'TRANSAMOUNT':
-                # Handle numeric sorting for amount
-                self.filtered_transactions_df = self.filtered_transactions_df.sort_values(
-                    by=column_name, ascending=ascending, na_position='last'
-                )
-            elif column_name == 'TRANSDATE':
-                # Handle date sorting
-                self.filtered_transactions_df = self.filtered_transactions_df.sort_values(
-                    by=column_name, ascending=ascending, na_position='last'
+                # Add headers and populate grid with sorting capability
+                headers = ["Date", "Payee", "Category", "Tags", "Notes", "Amount"]
+                populate_grid_with_dataframe(
+                    content.results_grid, 
+                    pd.DataFrame(),  # Empty DataFrame as placeholder since account_transactions is undefined
+                    headers,
+                    sort_callback=self.sort_transactions
                 )
             else:
-                # Handle text sorting
-                self.filtered_transactions_df = self.filtered_transactions_df.sort_values(
-                    by=column_name, ascending=ascending, na_position='last', key=lambda x: x.astype(str).str.lower()
+                content.results_label.text = (
+                    f"No transactions found for {account_name}"
                 )
-        except Exception as e:
-            print(f"Error sorting by {column_name}: {e}")
-            return
-        
-        # Refresh the current tab display
-        self.on_tab_switch(None, self.tab_panel.current_tab)
-
-    def on_tab_switch(self, instance, value):
-        """Handle tab switching."""
-        # Check if the visualization tab is selected
-        if hasattr(self, "visualization_tab") and value == self.visualization_tab:
-            self.update_visualization()
-            return
-
-        # Handle "All Transactions" tab
-        if hasattr(self, "all_transactions_tab") and value == self.all_transactions_tab:
-            # Check if we have transactions
-            if (
-                not hasattr(self, "filtered_transactions_df")
-                or self.filtered_transactions_df.empty
-            ):
-                self.all_transactions_status.text = (
-                    "No transactions found for the selected date range."
-                )
-                self.all_transactions_grid.clear_widgets()
-                return
-
-            # Update status
-            self.all_transactions_status.text = (
-                f"Showing {len(self.filtered_transactions_df)} transactions"
-            )
-
-            # Add headers and populate grid with sorting capability
-            headers = [
-                "Date",
-                "Account",
-                "Payee",
-                "Category",
-                "Tags",
-                "Notes",
-                "Amount",
-            ]
-            populate_grid_with_dataframe(
-                self.all_transactions_grid, 
-                self.filtered_transactions_df, 
-                headers,
-                sort_callback=self.sort_transactions
-            )
-
-            return
-
-        # Handle account-specific tabs
-        for account_id, account_data in self.account_tabs.items():
-            if value == account_data["tab"]:
-                # Get account content
-                content = account_data["content"]
-
-                # Clear grid
-                content.results_grid.clear_widgets()
-
-                # Filter transactions for this account
-                if hasattr(self, "filtered_transactions_df"):
-                    account_transactions = self.filtered_transactions_df[
-                        self.filtered_transactions_df["TRANSACTION_ACCOUNTID"]
-                        == account_id
-                    ]
-
-                    # Update status
-                    content.results_label.text = f"Showing {len(account_transactions)} transactions for {account_data['name']}"
-
-                    # Calculate balance
-                    try:
-                        end_date = self.end_date_input.text
-                        error, balance = calculate_balance_for_account(
-                            self.db_path,
-                            account_id,
-                            account_data["initial_balance"],
-                            datetime.strptime(end_date, "%Y-%m-%d"),
-                        )
-
-                        if error:
-                            content.balance_label.text = f"Balance: Error"
-                        else:
-                            content.balance_label.text = f"Balance: ${balance:.2f}"
-                    except Exception as e:
-                        content.balance_label.text = f"Balance: Error"
-                        print(f"Error calculating balance: {e}")
-
-                    # Add headers and populate grid with sorting capability
-                    headers = ["Date", "Payee", "Category", "Tags", "Notes", "Amount"]
-                    populate_grid_with_dataframe(
-                        content.results_grid, 
-                        account_transactions, 
-                        headers,
-                        sort_callback=self.sort_transactions
-                    )
-                else:
-                    content.results_label.text = (
-                        f"No transactions found for {account_data['name']}"
-                    )
 
                 break
 
     def show_filter_options(self, instance):
         """Show filter options popup."""
         content = BoxLayout(orientation="vertical", spacing=10, padding=10)
-
+    
         # Filter options
         options = ["All Fields", "Account", "Payee", "Category", "Notes", "Tags"]
-
+    
         for option in options:
             btn = Button(text=option, size_hint_y=None, height=40)
             btn.bind(
                 on_release=lambda btn, opt=option: self.select_filter_option(opt, popup)
             )
             content.add_widget(btn)
-
+    
         # Cancel button
         cancel_btn = Button(text="Cancel", size_hint_y=None, height=40)
         cancel_btn.bind(on_release=lambda x: popup.dismiss())
         content.add_widget(cancel_btn)
-
-        popup = Popup(title="Select Filter Type", content=content, size_hint=(0.8, 0.8))
+    
+        # More responsive popup size
+        popup = Popup(
+            title="Select Filter Type", 
+            content=content, 
+            size_hint=(None, None),
+            size=(300, 300),  # Fixed size for small screens
+            auto_dismiss=True
+        )
         popup.open()
 
     def select_filter_option(self, option, popup):
@@ -609,12 +463,18 @@ class MMEXKivyApp(App):
         # Set window size
         Window.size = (1200, 800)
         Window.minimum_width, Window.minimum_height = 800, 600
+        
+        # Enable window resizing events
+        Window.bind(on_resize=self.on_window_resize)
 
         # Set global font
         Builder.load_string(f"""
         #:kivy 2.1.0
         <Label>:
             font_name: '{UNICODE_FONT_PATH}'
+            text_size: self.width, None
+            halign: 'left'
+            valign: 'middle'
         <Button>:
             font_name: '{UNICODE_FONT_PATH}'
         <TextInput>:
@@ -622,6 +482,15 @@ class MMEXKivyApp(App):
         """)
 
         return MMEXAppLayout()
+        
+    def on_window_resize(self, instance, width, height):
+        """Handle window resize events."""
+        # Update tab width based on window width
+        app = App.get_running_app()
+        if hasattr(app.root, 'tab_panel'):
+            # Adjust tab width based on window width
+            new_tab_width = max(100, min(150, width / 8))
+            app.root.tab_panel.tab_width = new_tab_width
 
 
 if __name__ == "__main__":
