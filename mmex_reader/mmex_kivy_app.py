@@ -107,6 +107,71 @@ class MMEXAppLayout(BoxLayout):
         # Run initial query
         self.run_global_query()
 
+    def run_global_query(self):
+        """Execute the global transaction query and update the UI."""
+        start_date_str = self.start_date_input.text
+        end_date_str = self.end_date_input.text
+
+        error, self.all_transactions_df = get_transactions(
+            self.db_path, start_date_str, end_date_str
+        )
+
+        if error:
+            show_popup("Error", error)
+            self.all_transactions_df = pd.DataFrame()
+
+        self.apply_search_filter()
+
+    def on_tab_switch(self, instance, tab):
+        """Handle tab switching to update content."""
+        if tab.text == "All Transactions":
+            populate_grid_with_dataframe(
+                self.all_transactions_grid,
+                self.filtered_transactions_df,
+                self.filtered_transactions_df.columns.tolist(),
+                sort_callback=self.sort_transactions,
+            )
+            self.all_transactions_status.text = f"{len(self.filtered_transactions_df)} transactions found"
+        elif tab.text == "Charts":
+            self.update_visualization()
+        else:
+            # Handle account-specific tabs
+            account_name = tab.text
+            for account_id, account_info in self.account_tabs.items():
+                if account_info["name"] == account_name:
+                    content = account_info["content"]
+
+                    if hasattr(self, 'filtered_transactions_df'):
+                        account_transactions = self.filtered_transactions_df[
+                            self.filtered_transactions_df["ACCOUNTNAME"] == account_name
+                        ]
+
+                        populate_grid_with_dataframe(
+                            content.results_grid,
+                            account_transactions,
+                            account_transactions.columns.tolist(),
+                            sort_callback=self.sort_transactions,
+                        )
+                        content.results_label.text = f"{len(account_transactions)} transactions found"
+
+                        # Update balance
+                        try:
+                            end_date = self.end_date_input.text
+                            error, balance = calculate_balance_for_account(
+                                self.db_path,
+                                account_id,
+                                account_info["initial_balance"],
+                                datetime.strptime(end_date, "%Y-%m-%d"),
+                            )
+                            if error:
+                                content.balance_label.text = f"Balance: Error"
+                            else:
+                                content.balance_label.text = f"Balance: ${balance:.2f}"
+                        except Exception as e:
+                            content.balance_label.text = f"Balance: Error"
+                            print(f"Error calculating balance: {e}")
+                    break
+
     def _create_date_inputs(self):
         """Create date input fields with validation."""
         date_layout = BoxLayout(size_hint=(1, None), height=40, spacing=10)
@@ -134,6 +199,16 @@ class MMEXAppLayout(BoxLayout):
         date_layout.add_widget(self.end_date_input)
     
         self.add_widget(date_layout)
+
+    def trigger_global_query_on_date_change(self, instance, value):
+        """Trigger the global query when the date changes, with validation."""
+        try:
+            datetime.strptime(self.start_date_input.text, "%Y-%m-%d")
+            datetime.strptime(self.end_date_input.text, "%Y-%m-%d")
+            self.run_global_query()
+        except ValueError:
+            # Handle invalid date format
+            pass
 
     def _create_search_filter_layout(self):
         """Create search and filter layout."""
@@ -423,6 +498,24 @@ class MMEXAppLayout(BoxLayout):
                 self.filtered_transactions_df = self.all_transactions_df[mask]
 
         # Update the active tab
+        self.on_tab_switch(None, self.tab_panel.current_tab)
+
+    def sort_transactions(self, column_header):
+        """Sort transactions based on the selected column."""
+        if self.current_sort_column == column_header:
+            self.current_sort_ascending = not self.current_sort_ascending
+        else:
+            self.current_sort_column = column_header
+            self.current_sort_ascending = True
+
+        if hasattr(self, 'filtered_transactions_df') and not self.filtered_transactions_df.empty:
+            self.filtered_transactions_df.sort_values(
+                by=self.current_sort_column,
+                ascending=self.current_sort_ascending,
+                inplace=True
+            )
+
+        # Update the active tab to refresh the view
         self.on_tab_switch(None, self.tab_panel.current_tab)
 
     def clear_search_filter(self, instance):
