@@ -48,11 +48,10 @@ def get_all_accounts(db_path):
         DataFrame containing account information
     """
     try:
-        conn = sqlite3.connect(db_path)
-        query = f"SELECT ACCOUNTID, ACCOUNTNAME, ACCOUNTTYPE, INITIALBAL, STATUS FROM {ACCOUNT_TABLE}"
-        accounts_df = pd.read_sql_query(query, conn)
-        conn.close()
-        return accounts_df
+        with sqlite3.connect(db_path) as conn:
+            query = f"SELECT ACCOUNTID, ACCOUNTNAME, ACCOUNTTYPE, INITIALBAL, STATUS FROM {ACCOUNT_TABLE}"
+            accounts_df = pd.read_sql_query(query, conn)
+            return accounts_df
     except Exception as e:
         print(f"Error getting accounts: {e}")
         return pd.DataFrame()
@@ -70,59 +69,57 @@ def get_transactions(db_path, account_id=None, start_date=None, end_date=None):
         DataFrame containing transaction information
     """
     try:
-        conn = sqlite3.connect(db_path)
-        
-        # Base query
-        query = f"""
-        SELECT t.TRANSID, t.ACCOUNTID, t.TRANSCODE, t.TRANSAMOUNT, 
-               t.TRANSACTIONNUMBER, t.NOTES, t.TRANSDATE, t.FOLLOWUPID, 
-               t.TOTRANSAMOUNT, t.TOSPLITCATEGORY, t.CATEGID, t.SUBCATEGID, 
-               t.TRANSACTIONDATE, t.DELETEDTIME, t.PAYEEID,
-               a.ACCOUNTNAME, c.CATEGNAME, s.SUBCATEGNAME, p.PAYEENAME
-        FROM {TRANSACTION_TABLE} t
-        LEFT JOIN {ACCOUNT_TABLE} a ON t.ACCOUNTID = a.ACCOUNTID
-        LEFT JOIN {CATEGORY_TABLE} c ON t.CATEGID = c.CATEGID
-        LEFT JOIN {SUBCATEGORY_TABLE} s ON t.SUBCATEGID = s.SUBCATEGID
-        LEFT JOIN {PAYEE_TABLE} p ON t.PAYEEID = p.PAYEEID
-        WHERE t.DELETEDTIME = ''
-        """
-        
-        # Add filters
-        params = []
-        if account_id is not None:
-            query += " AND t.ACCOUNTID = ?"
-            params.append(account_id)
-        
-        if start_date:
-            query += " AND t.TRANSDATE >= ?"
-            params.append(start_date.strftime("%Y-%m-%d"))
-            
-        if end_date:
-            query += " AND t.TRANSDATE <= ?"
-            params.append(end_date.strftime("%Y-%m-%d"))
-            
-        query += " ORDER BY t.TRANSDATE DESC"
-        
-        # Execute query
-        transactions_df = pd.read_sql_query(query, conn, params=params)
-        
-        # Add tags column
-        transactions_df['TAGS'] = ''
-        
-        # Get tags for each transaction
-        for idx, row in transactions_df.iterrows():
-            tag_query = f"""
-            SELECT t.TAGNAME 
-            FROM {TAG_TABLE} t
-            JOIN {TAGLINK_TABLE} tl ON t.TAGID = tl.TAGID
-            WHERE tl.REFID = ? AND tl.REFTYPE = 'Transaction'
+        with sqlite3.connect(db_path) as conn:
+            # Base query
+            query = f"""
+            SELECT t.TRANSID, t.ACCOUNTID, t.TRANSCODE, t.TRANSAMOUNT, 
+                   t.TRANSACTIONNUMBER, t.NOTES, t.TRANSDATE, t.FOLLOWUPID, 
+                   t.TOTRANSAMOUNT, t.TOSPLITCATEGORY, t.CATEGID, t.SUBCATEGID, 
+                   t.TRANSACTIONDATE, t.DELETEDTIME, t.PAYEEID,
+                   a.ACCOUNTNAME, c.CATEGNAME, s.SUBCATEGNAME, p.PAYEENAME
+            FROM {TRANSACTION_TABLE} t
+            LEFT JOIN {ACCOUNT_TABLE} a ON t.ACCOUNTID = a.ACCOUNTID
+            LEFT JOIN {CATEGORY_TABLE} c ON t.CATEGID = c.CATEGID
+            LEFT JOIN {SUBCATEGORY_TABLE} s ON t.SUBCATEGID = s.SUBCATEGID
+            LEFT JOIN {PAYEE_TABLE} p ON t.PAYEEID = p.PAYEEID
+            WHERE t.DELETEDTIME = ''
             """
-            tags_df = pd.read_sql_query(tag_query, conn, params=[row['TRANSID']])
-            if not tags_df.empty:
-                transactions_df.at[idx, 'TAGS'] = ', '.join(tags_df['TAGNAME'].tolist())
-        
-        conn.close()
-        return transactions_df
+            
+            # Add filters
+            params = []
+            if account_id is not None:
+                query += " AND t.ACCOUNTID = ?"
+                params.append(account_id)
+            
+            if start_date:
+                query += " AND t.TRANSDATE >= ?"
+                params.append(start_date.strftime("%Y-%m-%d"))
+                
+            if end_date:
+                query += " AND t.TRANSDATE <= ?"
+                params.append(end_date.strftime("%Y-%m-%d"))
+                
+            query += " ORDER BY t.TRANSDATE DESC"
+            
+            # Execute query
+            transactions_df = pd.read_sql_query(query, conn, params=params)
+            
+            # Add tags column
+            transactions_df['TAGS'] = ''
+            
+            # Get tags for each transaction
+            for idx, row in transactions_df.iterrows():
+                tag_query = f"""
+                SELECT t.TAGNAME 
+                FROM {TAG_TABLE} t
+                JOIN {TAGLINK_TABLE} tl ON t.TAGID = tl.TAGID
+                WHERE tl.REFID = ? AND tl.REFTYPE = 'Transaction'
+                """
+                tags_df = pd.read_sql_query(tag_query, conn, params=[row['TRANSID']])
+                if not tags_df.empty:
+                    transactions_df.at[idx, 'TAGS'] = ', '.join(tags_df['TAGNAME'].tolist())
+            
+            return transactions_df
     except Exception as e:
         print(f"Error getting transactions: {e}")
         return pd.DataFrame()
@@ -139,46 +136,44 @@ def calculate_balance_for_account(db_path, account_id, date=None):
         Calculated account balance
     """
     try:
-        # Get account initial balance
-        conn = sqlite3.connect(db_path)
-        query = f"SELECT INITIALBAL FROM {ACCOUNT_TABLE} WHERE ACCOUNTID = ?"
-        cursor = conn.cursor()
-        cursor.execute(query, (account_id,))
-        result = cursor.fetchone()
-        
-        if not result:
-            conn.close()
-            return 0
+        with sqlite3.connect(db_path) as conn:
+            # Get account initial balance
+            query = f"SELECT INITIALBAL FROM {ACCOUNT_TABLE} WHERE ACCOUNTID = ?"
+            cursor = conn.cursor()
+            cursor.execute(query, (account_id,))
+            result = cursor.fetchone()
             
-        initial_balance = result[0]
-        
-        # Get all transactions for this account up to the specified date
-        query = f"""
-        SELECT TRANSCODE, TRANSAMOUNT 
-        FROM {TRANSACTION_TABLE} 
-        WHERE ACCOUNTID = ? AND DELETEDTIME = ''
-        """
-        
-        params = [account_id]
-        
-        if date:
-            query += " AND TRANSDATE <= ?"
-            params.append(date.strftime("%Y-%m-%d"))
-        
-        cursor.execute(query, params)
-        transactions = cursor.fetchall()
-        
-        # Calculate balance
-        balance = initial_balance
-        for trans_type, amount in transactions:
-            if trans_type == "Withdrawal":
-                balance -= amount
-            elif trans_type == "Deposit":
-                balance += amount
-            # Handle transfers if needed
-        
-        conn.close()
-        return balance
+            if not result:
+                return 0
+                
+            initial_balance = result[0]
+            
+            # Get all transactions for this account up to the specified date
+            query = f"""
+            SELECT TRANSCODE, TRANSAMOUNT 
+            FROM {TRANSACTION_TABLE} 
+            WHERE ACCOUNTID = ? AND DELETEDTIME = ''
+            """
+            
+            params = [account_id]
+            
+            if date:
+                query += " AND TRANSDATE <= ?"
+                params.append(date.strftime("%Y-%m-%d"))
+            
+            cursor.execute(query, params)
+            transactions = cursor.fetchall()
+            
+            # Calculate balance
+            balance = initial_balance
+            for trans_type, amount in transactions:
+                if trans_type == "Withdrawal":
+                    balance -= amount
+                elif trans_type == "Deposit":
+                    balance += amount
+                # Handle transfers if needed
+            
+            return balance
     except Exception as e:
         print(f"Error calculating balance: {e}")
         return 0
