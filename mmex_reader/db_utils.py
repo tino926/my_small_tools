@@ -29,38 +29,42 @@ PAYEE_TABLE = "PAYEE_V1"
 TAG_TABLE = "TAG_V1"
 TAGLINK_TABLE = "TAGLINK_V1"
 
+
 def load_db_path():
     """Load the MMEX database path from the .env file or use a default path.
-    
+
     Returns:
         str: Path to the MMEX database file
-        
+
     Raises:
         FileNotFoundError: If the database file doesn't exist at the specified or default path
     """
     try:
         load_dotenv()
         db_path = os.getenv("MMEX_DB_PATH")
-        
+
         if not db_path:
             # Default path if not specified in .env
-            db_path = os.path.join(os.path.expanduser("~"), "Documents", "MoneyManagerEx", "data.mmb")
-        
+            db_path = os.path.join(
+                os.path.expanduser("~"), "Documents", "MoneyManagerEx", "data.mmb"
+            )
+
         if not os.path.exists(db_path):
             raise FileNotFoundError(f"Database file not found: {db_path}")
-            
+
         return db_path
-        
+
     except Exception as e:
         print(f"Error loading database path: {e}")
         raise
 
+
 def get_all_accounts(db_path):
     """Get all accounts from the MMEX database.
-    
+
     Args:
         db_path (str): Path to the MMEX database file
-        
+
     Returns:
         tuple: (error_message, accounts_dataframe)
             - error_message (str or None): Error message if any, None if successful
@@ -68,7 +72,7 @@ def get_all_accounts(db_path):
     """
     if not db_path or not os.path.exists(db_path):
         return "Database file not found", pd.DataFrame()
-        
+
     try:
         with sqlite3.connect(db_path) as conn:
             query = f"SELECT ACCOUNTID, ACCOUNTNAME, ACCOUNTTYPE, INITIALBAL, STATUS FROM {ACCOUNT_TABLE}"
@@ -79,15 +83,16 @@ def get_all_accounts(db_path):
     except Exception as e:
         return f"Unexpected error: {e}", pd.DataFrame()
 
+
 def get_transactions(db_path, start_date_str=None, end_date_str=None, account_id=None):
     """Get transactions from the MMEX database.
-    
+
     Args:
         db_path (str): Path to the MMEX database file
         start_date_str (str, optional): Start date string in YYYY-MM-DD format
         end_date_str (str, optional): End date string in YYYY-MM-DD format
         account_id (int, optional): Account ID to filter transactions
-        
+
     Returns:
         tuple: (error_message, transactions_dataframe)
             - error_message (str or None): Error message if any, None if successful
@@ -95,26 +100,26 @@ def get_transactions(db_path, start_date_str=None, end_date_str=None, account_id
     """
     if not db_path or not os.path.exists(db_path):
         return "Database file not found", pd.DataFrame()
-    
+
     # Validate date strings
     start_date = None
     end_date = None
-    
+
     if start_date_str:
         try:
             start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
         except ValueError:
             return f"Invalid start date format: {start_date_str}", pd.DataFrame()
-    
+
     if end_date_str:
         try:
             end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
         except ValueError:
             return f"Invalid end date format: {end_date_str}", pd.DataFrame()
-    
+
     if start_date and end_date and start_date > end_date:
         return "Start date cannot be after end date", pd.DataFrame()
-        
+
     try:
         with sqlite3.connect(db_path) as conn:
             # Base query
@@ -131,29 +136,29 @@ def get_transactions(db_path, start_date_str=None, end_date_str=None, account_id
             LEFT JOIN {PAYEE_TABLE} p ON t.PAYEEID = p.PAYEEID
             WHERE t.DELETEDTIME = ''
             """
-            
+
             # Add filters
             params = []
             if account_id is not None:
                 query += " AND t.ACCOUNTID = ?"
                 params.append(account_id)
-            
+
             if start_date:
                 query += " AND t.TRANSDATE >= ?"
                 params.append(start_date.strftime("%Y-%m-%d"))
-                
+
             if end_date:
                 query += " AND t.TRANSDATE <= ?"
                 params.append(end_date.strftime("%Y-%m-%d"))
-                
+
             query += " ORDER BY t.TRANSDATE DESC"
-            
+
             # Execute query
             transactions_df = pd.read_sql_query(query, conn, params=params)
-            
+
             # Add tags column
-            transactions_df['TAGS'] = ''
-            
+            transactions_df["TAGS"] = ""
+
             # Get tags for each transaction
             for idx, row in transactions_df.iterrows():
                 tag_query = f"""
@@ -162,35 +167,38 @@ def get_transactions(db_path, start_date_str=None, end_date_str=None, account_id
                 JOIN {TAGLINK_TABLE} tl ON t.TAGID = tl.TAGID
                 WHERE tl.REFID = ? AND tl.REFTYPE = 'Transaction'
                 """
-                tags_df = pd.read_sql_query(tag_query, conn, params=[row['TRANSID']])
+                tags_df = pd.read_sql_query(tag_query, conn, params=[row["TRANSID"]])
                 if not tags_df.empty:
-                    transactions_df.at[idx, 'TAGS'] = ', '.join(tags_df['TAGNAME'].tolist())
-            
+                    transactions_df.at[idx, "TAGS"] = ", ".join(
+                        tags_df["TAGNAME"].tolist()
+                    )
+
             return None, transactions_df
-            
+
     except sqlite3.Error as e:
         return f"Database error: {e}", pd.DataFrame()
     except Exception as e:
         return f"Unexpected error: {e}", pd.DataFrame()
 
+
 def calculate_balance_for_account(db_path, account_id, date=None):
     """Calculate the balance for a specific account up to a given date.
-    
+
     Args:
         db_path: Path to the MMEX database file
         account_id: Account ID to calculate balance for
         date: Optional date to calculate balance up to
-        
+
     Returns:
         tuple: (error_message, balance) where error_message is None on success
     """
     # Validate inputs
     if not db_path or not os.path.exists(db_path):
         return "Database file does not exist", None
-    
+
     if not account_id:
         return "Account ID is required", None
-    
+
     try:
         with sqlite3.connect(db_path) as conn:
             # Get account initial balance
@@ -198,28 +206,28 @@ def calculate_balance_for_account(db_path, account_id, date=None):
             cursor = conn.cursor()
             cursor.execute(query, (account_id,))
             result = cursor.fetchone()
-            
+
             if not result:
                 return f"Account with ID {account_id} not found", None
-                
+
             initial_balance = result[0] or 0
-            
+
             # Get all transactions for this account up to the specified date
             query = f"""
             SELECT TRANSCODE, TRANSAMOUNT 
             FROM {TRANSACTION_TABLE} 
             WHERE ACCOUNTID = ? AND DELETEDTIME = ''
             """
-            
+
             params = [account_id]
-            
+
             if date:
                 query += " AND TRANSDATE <= ?"
                 params.append(date.strftime("%Y-%m-%d"))
-            
+
             cursor.execute(query, params)
             transactions = cursor.fetchall()
-            
+
             # Calculate balance
             balance = initial_balance
             for trans_type, amount in transactions:
@@ -228,7 +236,7 @@ def calculate_balance_for_account(db_path, account_id, date=None):
                 elif trans_type == "Deposit":
                     balance += amount
                 # Handle transfers if needed
-            
+
             return None, balance
     except sqlite3.Error as e:
         return f"Database error: {e}", None
