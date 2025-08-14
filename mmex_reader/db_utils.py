@@ -30,44 +30,91 @@ TAG_TABLE = "TAG_V1"
 TAGLINK_TABLE = "TAGLINK_V1"
 
 def load_db_path():
-    """Load the MMEX database path from the .env file or use a default path."""
-    load_dotenv()
-    db_path = os.getenv("MMEX_DB_PATH")
-    if not db_path:
-        # Default path if not specified in .env
-        db_path = os.path.join(os.path.expanduser("~"), "Documents", "MoneyManagerEx", "data.mmb")
-    return db_path
+    """Load the MMEX database path from the .env file or use a default path.
+    
+    Returns:
+        str: Path to the MMEX database file
+        
+    Raises:
+        FileNotFoundError: If the database file doesn't exist at the specified or default path
+    """
+    try:
+        load_dotenv()
+        db_path = os.getenv("MMEX_DB_PATH")
+        
+        if not db_path:
+            # Default path if not specified in .env
+            db_path = os.path.join(os.path.expanduser("~"), "Documents", "MoneyManagerEx", "data.mmb")
+        
+        if not os.path.exists(db_path):
+            raise FileNotFoundError(f"Database file not found: {db_path}")
+            
+        return db_path
+        
+    except Exception as e:
+        print(f"Error loading database path: {e}")
+        raise
 
 def get_all_accounts(db_path):
     """Get all accounts from the MMEX database.
     
     Args:
-        db_path: Path to the MMEX database file
+        db_path (str): Path to the MMEX database file
         
     Returns:
-        DataFrame containing account information
+        tuple: (error_message, accounts_dataframe)
+            - error_message (str or None): Error message if any, None if successful
+            - accounts_dataframe (DataFrame): DataFrame containing account information
     """
+    if not db_path or not os.path.exists(db_path):
+        return "Database file not found", pd.DataFrame()
+        
     try:
         with sqlite3.connect(db_path) as conn:
             query = f"SELECT ACCOUNTID, ACCOUNTNAME, ACCOUNTTYPE, INITIALBAL, STATUS FROM {ACCOUNT_TABLE}"
             accounts_df = pd.read_sql_query(query, conn)
-            return accounts_df
+            return None, accounts_df
+    except sqlite3.Error as e:
+        return f"Database error: {e}", pd.DataFrame()
     except Exception as e:
-        print(f"Error getting accounts: {e}")
-        return pd.DataFrame()
+        return f"Unexpected error: {e}", pd.DataFrame()
 
-def get_transactions(db_path, account_id=None, start_date=None, end_date=None):
+def get_transactions(db_path, start_date_str=None, end_date_str=None, account_id=None):
     """Get transactions from the MMEX database.
     
     Args:
-        db_path: Path to the MMEX database file
-        account_id: Optional account ID to filter transactions
-        start_date: Optional start date to filter transactions
-        end_date: Optional end date to filter transactions
+        db_path (str): Path to the MMEX database file
+        start_date_str (str, optional): Start date string in YYYY-MM-DD format
+        end_date_str (str, optional): End date string in YYYY-MM-DD format
+        account_id (int, optional): Account ID to filter transactions
         
     Returns:
-        DataFrame containing transaction information
+        tuple: (error_message, transactions_dataframe)
+            - error_message (str or None): Error message if any, None if successful
+            - transactions_dataframe (DataFrame): DataFrame containing transaction information
     """
+    if not db_path or not os.path.exists(db_path):
+        return "Database file not found", pd.DataFrame()
+    
+    # Validate date strings
+    start_date = None
+    end_date = None
+    
+    if start_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+        except ValueError:
+            return f"Invalid start date format: {start_date_str}", pd.DataFrame()
+    
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+        except ValueError:
+            return f"Invalid end date format: {end_date_str}", pd.DataFrame()
+    
+    if start_date and end_date and start_date > end_date:
+        return "Start date cannot be after end date", pd.DataFrame()
+        
     try:
         with sqlite3.connect(db_path) as conn:
             # Base query
@@ -119,10 +166,12 @@ def get_transactions(db_path, account_id=None, start_date=None, end_date=None):
                 if not tags_df.empty:
                     transactions_df.at[idx, 'TAGS'] = ', '.join(tags_df['TAGNAME'].tolist())
             
-            return transactions_df
+            return None, transactions_df
+            
+    except sqlite3.Error as e:
+        return f"Database error: {e}", pd.DataFrame()
     except Exception as e:
-        print(f"Error getting transactions: {e}")
-        return pd.DataFrame()
+        return f"Unexpected error: {e}", pd.DataFrame()
 
 def calculate_balance_for_account(db_path, account_id, date=None):
     """Calculate the balance for a specific account up to a given date.
@@ -133,8 +182,15 @@ def calculate_balance_for_account(db_path, account_id, date=None):
         date: Optional date to calculate balance up to
         
     Returns:
-        Calculated account balance
+        tuple: (error_message, balance) where error_message is None on success
     """
+    # Validate inputs
+    if not db_path or not os.path.exists(db_path):
+        return "Database file does not exist", None
+    
+    if not account_id:
+        return "Account ID is required", None
+    
     try:
         with sqlite3.connect(db_path) as conn:
             # Get account initial balance
@@ -144,9 +200,9 @@ def calculate_balance_for_account(db_path, account_id, date=None):
             result = cursor.fetchone()
             
             if not result:
-                return 0
+                return f"Account with ID {account_id} not found", None
                 
-            initial_balance = result[0]
+            initial_balance = result[0] or 0
             
             # Get all transactions for this account up to the specified date
             query = f"""
@@ -173,7 +229,8 @@ def calculate_balance_for_account(db_path, account_id, date=None):
                     balance += amount
                 # Handle transfers if needed
             
-            return balance
+            return None, balance
+    except sqlite3.Error as e:
+        return f"Database error: {e}", None
     except Exception as e:
-        print(f"Error calculating balance: {e}")
-        return 0
+        return f"Unexpected error calculating balance: {e}", None
