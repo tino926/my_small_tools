@@ -55,6 +55,27 @@ from visualization import VisualizationTab
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 UNICODE_FONT_PATH = os.path.join(SCRIPT_DIR, "fonts", "NotoSansCJKtc-Regular.otf")
 
+class UIConstants:
+    """UI constants for consistent styling and behavior."""
+    WINDOW_MIN_WIDTH = 1200
+    WINDOW_MIN_HEIGHT = 800
+    DEFAULT_FONT_SIZE = 14
+    HEADER_HEIGHT = 40
+    ROW_HEIGHT = 30
+    BUTTON_HEIGHT = 40
+    INPUT_HEIGHT = 35
+    TAB_HEIGHT = 50
+    SCROLL_DISTANCE = 20
+    
+    # Transaction headers
+    TRANSACTION_HEADERS = ["Date", "Account", "Payee", "Category", "Tags", "Notes", "Amount"]
+    
+    # Filter options
+    FILTER_OPTIONS = ["All", "Income", "Expense", "Transfer"]
+    
+    # Date format
+    DATE_FORMAT = "%Y-%m-%d"
+
 
 class MMEXAppLayout(BoxLayout):
     """Main layout for the MMEX Kivy application."""
@@ -101,52 +122,75 @@ class MMEXAppLayout(BoxLayout):
     def on_tab_switch(self, instance, tab):
         """Handle tab switching to update content."""
         if tab.text == "All Transactions":
-            populate_grid_with_dataframe(
-                self.all_transactions_grid,
-                self.filtered_transactions_df,
-                self.filtered_transactions_df.columns.tolist(),
-                sort_callback=self.sort_transactions,
-            )
-            self.all_transactions_status.text = f"{len(self.filtered_transactions_df)} transactions found"
+            self._update_all_transactions_tab()
         elif tab.text == "Charts":
             self.update_visualization()
         else:
-            # Handle account-specific tabs
-            account_name = tab.text
-            for account_id, account_info in self.account_tabs.items():
-                if account_info["name"] == account_name:
-                    content = account_info["content"]
+            self._update_account_tab(tab.text)
+    
+    def _update_all_transactions_tab(self):
+        """Update the All Transactions tab content."""
+        populate_grid_with_dataframe(
+            self.all_transactions_grid,
+            self.filtered_transactions_df,
+            UIConstants.TRANSACTION_HEADERS,
+            sort_callback=self.sort_transactions,
+        )
+        self.all_transactions_status.text = f"{len(self.filtered_transactions_df)} transactions found"
+    
+    def _update_account_tab(self, account_name):
+        """Update account-specific tab content.
+        
+        Args:
+            account_name: Name of the account to update
+        """
+        for account_id, account_info in self.account_tabs.items():
+            if account_info["name"] == account_name:
+                content = account_info["content"]
 
-                    if hasattr(self, 'filtered_transactions_df'):
-                        account_transactions = self.filtered_transactions_df[
-                            self.filtered_transactions_df["ACCOUNTNAME"] == account_name
-                        ]
+                if hasattr(self, 'filtered_transactions_df'):
+                    account_transactions = self.filtered_transactions_df[
+                        self.filtered_transactions_df["ACCOUNTNAME"] == account_name
+                    ]
 
-                        populate_grid_with_dataframe(
-                            content.results_grid,
-                            account_transactions,
-                            account_transactions.columns.tolist(),
-                            sort_callback=self.sort_transactions,
-                        )
-                        content.results_label.text = f"{len(account_transactions)} transactions found"
+                    populate_grid_with_dataframe(
+                        content.results_grid,
+                        account_transactions,
+                        UIConstants.TRANSACTION_HEADERS,
+                        sort_callback=self.sort_transactions,
+                    )
+                    content.results_label.text = f"{len(account_transactions)} transactions found"
 
-                        # Update balance
-                        try:
-                            end_date = self.end_date_input.text
-                            error, balance = calculate_balance_for_account(
-                                self.db_path,
-                                account_id,
-                                account_info["initial_balance"],
-                                datetime.strptime(end_date, "%Y-%m-%d"),
-                            )
-                            if error:
-                                content.balance_label.text = f"Balance: Error"
-                            else:
-                                content.balance_label.text = f"Balance: ${balance:.2f}"
-                        except Exception as e:
-                            content.balance_label.text = f"Balance: Error"
-                            print(f"Error calculating balance: {e}")
-                    break
+                    # Update balance
+                    self._update_account_balance(account_id, account_info, content)
+                break
+    
+    def _update_account_balance(self, account_id, account_info, content):
+        """Update account balance display.
+        
+        Args:
+            account_id: Account ID
+            account_info: Account information dictionary
+            content: Account tab content widget
+        """
+        try:
+            if not self._validate_date(self.end_date_input.text):
+                content.balance_label.text = "Balance: Invalid date"
+                return
+                
+            end_date = datetime.strptime(self.end_date_input.text, UIConstants.DATE_FORMAT)
+            error, balance = calculate_balance_for_account(
+                self.db_path,
+                account_id,
+                end_date,
+            )
+            if error:
+                content.balance_label.text = f"Balance: {error}"
+            else:
+                content.balance_label.text = f"Balance: ${balance:.2f}"
+        except Exception as e:
+            content.balance_label.text = "Balance: Calculation error"
+            print(f"Error calculating balance for {account_info['name']}: {e}")
 
     def _create_date_inputs(self):
         """Create date input fields with validation."""
@@ -174,15 +218,26 @@ class MMEXAppLayout(BoxLayout):
 
         self.add_widget(date_layout)
 
+    def _validate_date(self, date_str):
+        """Validate date string format.
+        
+        Args:
+            date_str: Date string to validate
+            
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        try:
+            datetime.strptime(date_str, UIConstants.DATE_FORMAT)
+            return True
+        except ValueError:
+            return False
+    
     def _on_date_change(self, instance, value):
         """Trigger the global query when the date changes, with validation."""
-        try:
-            datetime.strptime(self.start_date_input.text, "%Y-%m-%d")
-            datetime.strptime(self.end_date_input.text, "%Y-%m-%d")
+        if (self._validate_date(self.start_date_input.text) and 
+            self._validate_date(self.end_date_input.text)):
             self.run_global_query()
-        except ValueError:
-            # Handle invalid date format - silently ignore
-            pass
 
     def _create_search_filter_layout(self):
         """Create search and filter layout."""
@@ -237,7 +292,9 @@ class MMEXAppLayout(BoxLayout):
 
         # Status label
         self.all_transactions_status = Label(
-            text="All Transactions", size_hint=(1, None), height=30
+            text="All Transactions", 
+            size_hint=(1, None), 
+            height=UIConstants.ROW_HEIGHT
         )
         all_content.add_widget(self.all_transactions_status)
 
@@ -245,7 +302,11 @@ class MMEXAppLayout(BoxLayout):
         scroll_view = ScrollView(size_hint=(1, 1))
 
         # Grid for transactions
-        self.all_transactions_grid = GridLayout(cols=7, spacing=2, size_hint_y=None)
+        self.all_transactions_grid = GridLayout(
+            cols=len(UIConstants.TRANSACTION_HEADERS), 
+            spacing=2, 
+            size_hint_y=None
+        )
         self.all_transactions_grid.bind(
             minimum_height=self.all_transactions_grid.setter("height")
         )
@@ -341,7 +402,6 @@ class MMEXAppLayout(BoxLayout):
             error, balance = calculate_balance_for_account(
                 self.db_path,
                 account_id,
-                initial_balance,
                 datetime.strptime(end_date, "%Y-%m-%d"),
             )
 
