@@ -175,6 +175,35 @@ def create_header_label(text):
     
     return label
 
+def _create_data_label(text, num_columns):
+    """Create a data label with proper formatting and binding.
+    
+    Args:
+        text: The text to display
+        num_columns: Number of columns for width calculation
+        
+    Returns:
+        Configured Label widget
+    """
+    label = Label(
+        text=text,
+        size_hint_y=None,
+        height=30,
+        size_hint_x=1/num_columns,
+        text_size=(None, 30),
+        halign='left',
+        valign='middle',
+        shorten=True,
+        shorten_from='right'
+    )
+    
+    # Bind size to update text_size
+    def update_text_size(instance, value):
+        instance.text_size = (value, 30)
+    
+    label.bind(width=update_text_size)
+    return label
+
 def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None):
     """Populate a grid layout with data from a DataFrame.
     
@@ -218,42 +247,28 @@ def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None):
                     text=header,
                     column_name=column_mapping[header],
                     sort_callback=sort_callback,
-                    size_hint_x=1/len(headers)  # Distribute width evenly
+                    size_hint_x=1/len(headers)
                 )
                 grid.add_widget(header_btn)
             else:
                 # Create regular header label
                 header_label = create_header_label(header)
-                header_label.size_hint_x = 1/len(headers)  # Distribute width evenly
+                header_label.size_hint_x = 1/len(headers)
                 grid.add_widget(header_label)
     
     # Add data rows
     for _, row in df.iterrows():
-        for i, col in enumerate(df.columns):
+        for col in df.columns:
             value = row[col]
             # Format value based on column type
-            if col == 'TRANSAMOUNT' or col == 'TOTRANSAMOUNT':
+            if col in ('TRANSAMOUNT', 'TOTRANSAMOUNT'):
                 text = f"${value:.2f}" if pd.notna(value) else ""
             elif col == 'TRANSDATE':
-                text = str(value).split()[0] if pd.notna(value) else ""  # Just the date part
+                text = str(value).split()[0] if pd.notna(value) else ""
             else:
                 text = str(value) if pd.notna(value) else ""
             
-            label = Label(
-                text=text,
-                size_hint_y=None,
-                height=30,
-                size_hint_x=1/len(df.columns),  # Distribute width evenly
-                text_size=(None, 30),  # Fixed height, width will be set on_size
-                halign='left',
-                valign='middle',
-                shorten=True,  # Enable text shortening if too long
-                shorten_from='right'  # Shorten from the right side
-            )
-            
-            # Bind size to update text_size
-            label.bind(width=lambda instance, value: setattr(instance, 'text_size', (value, 30)))
-            
+            label = _create_data_label(text, len(df.columns))
             grid.add_widget(label)
             
             # Bind size to update text_size
