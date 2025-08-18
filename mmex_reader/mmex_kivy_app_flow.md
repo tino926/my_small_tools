@@ -3,186 +3,207 @@
 `mmex_kivy_app.py` 是一個使用 Kivy 框架開發的桌面應用程式，用於讀取和顯示 
 MoneyManagerEx (MMEX) 資料庫 (`.mmb` 檔案) 中的財務交易記錄。
 
-### 1. 應用程式啟動 (`MMEXKivyApp` class)
+### 1. 應用程式架構與常數定義
+
+- **模組化設計**:
+  - `db_utils.py`: 資料庫工具函數
+  - `ui_components.py`: UI 元件類別
+  - `visualization.py`: 資料視覺化函數
+  - `mmex_kivy_app.py`: 主應用程式程式碼
+
+- **UIConstants 類別**:
+  - 集中管理所有 UI 相關常數，包括視窗尺寸、字型大小、元件高度等
+  - `TRANSACTION_HEADERS`: 交易表格標題
+  - `FILTER_OPTIONS`: 篩選選項
+  - `DATE_FORMAT`: 統一的日期格式 ("%Y-%m-%d")
+
+### 2. 應用程式啟動 (`MMEXKivyApp` class)
 
 - **`build()` 方法**:
-  - 設定 Kivy 視窗的背景顏色 (`Window.clearcolor`)。
+  - 設定 Kivy 視窗的背景顏色和最小尺寸
   - **載入字型**:
-    - 檢查 `UNICODE_FONT_PATH` (預設為 `fonts/NotoSansCJKtc-Regular.otf`) 是否存
-      在。
-    - 如果字型檔案存在，則透過 `Builder.load_string()` 將此字型設定為 `Label`, 
-      `TextInput`, `Button`, `TabbedPanelHeader` 等 Kivy 元件的預設字型。這確保
-      了對中文字元等的良好支援。
-    - 如果字型檔案不存在或載入失敗，會印出警告訊息，Kivy 將使用其預設字型。
-  - 建立並回傳主佈局 `MMEXAppLayout` 的實例。
+    - 檢查 `UNICODE_FONT_PATH` (預設為 `fonts/NotoSansCJKtc-Regular.otf`) 是否存在
+    - 如果字型檔案存在，則透過 `Builder.load_string()` 將此字型設定為各種 Kivy 元件的預設字型
+    - 確保對中文字元等的良好支援
+  - 建立並回傳主佈局 `MMEXAppLayout` 的實例
 
-### 2. 主佈局初始化 (`MMEXAppLayout.__init__`)
+### 3. 主佈局初始化 (`MMEXAppLayout.__init__`)
 
-- 設定佈局方向為垂直 (`orientation="vertical"`)，並設定邊距和間距。
-- **載入資料庫路徑**:
-  - 呼叫 `load_db_path()` 從專案根目錄下的 `.env` 檔案中讀取 `DB_FILE_PATH`。
-  - 將路徑儲存在 `self.db_file_path`。
-- **建立 UI 元件**:
-  - **資料庫路徑標籤 (`self.db_path_label`)**: 顯示目前使用的資料庫檔案路徑。
-  - **日期輸入區塊**:
-    - 包含「開始日期」和「結束日期」的 `TextInput` 元件。
-    - 預設開始日期為上個月的第一天，結束日期為今天。
-    - 綁定 `on_text_validate` 事件到 `trigger_global_query_on_date_change` 方
-      法，當使用者在日期輸入框中按下 Enter 或焦點移開時，會觸發全域查詢。
-  - **分頁面板 (`self.tab_panel`)**:
-    - 用於顯示「所有交易」和各個帳戶的交易。
-    - 綁定 `current_tab` 事件到 `on_tab_switch` 方法，用於處理分頁切換邏輯。
-  - **建立「所有交易」分頁 (`_create_all_transactions_tab`)**:
-    - 建立一個固定的 `TabbedPanelHeader` 標題為 "All"。
-    - 其內容包含一個狀態標籤 (`self.all_transactions_status_label`) 和一個用於顯
-      示交易的 `GridLayout` (`self.all_transactions_grid`)，此網格位於 
-      `ScrollView` 內。
-    - 將此分頁設為預設分頁。
-  - **載入帳戶專用分頁 (`load_account_specific_tabs`)**:
-    - 呼叫 `get_all_accounts()` 從資料庫讀取所有帳戶列表。
-    - 如果成功讀取，為每個帳戶動態建立一個 `TabbedPanelHeader`。
-    - 每個帳戶分頁的內容是 `AccountTabContent` 類別的實例，其中包含該帳戶的狀態
-      標籤和交易顯示網格。
-  - **退出按鈕 (`self.exit_button`)**: 綁定 `on_press` 事件到 `exit_app` 方法。
-- **初始資料載入**:
-  - 呼叫 `self.run_global_query(None)` 以在應用程式啟動時自動執行一次全域查詢， 
-    載入預設日期範圍內的交易。
+- **狀態變數初始化**:
+  - `self.db_path`: 從 `load_db_path()` 載入的資料庫路徑
+  - `self.current_sort_column` 和 `self.current_sort_ascending`: 排序狀態
+  - `self.all_transactions_df` 和 `self.filtered_transactions_df`: 交易資料框
+  - `self.account_tabs`: 帳戶分頁字典
 
-### 3. 核心資料擷取函式
+- **UI 元件建立** (透過輔助方法):
+  - `_create_date_inputs()`: 建立日期輸入欄位
+  - `_create_search_filter_layout()`: 建立搜尋和篩選介面
+  - `_create_tabbed_panel()`: 建立分頁面板
+  - `_create_exit_button()`: 建立退出按鈕
+
+- **資料初始化**:
+  - `load_account_specific_tabs()`: 載入帳戶專用分頁
+  - `run_global_query()`: 執行初始全域查詢
+
+### 4. 核心資料擷取函式 (db_utils.py)
+
+所有資料庫函數現在都採用統一的錯誤處理模式，回傳 `(error_message, data)` 元組：
 
 - **`load_db_path()`**:
-  - 從 `.env` 檔案載入 `DB_FILE_PATH` 環境變數。
-- **`get_all_accounts(db_file)`**:
-  - 連接到指定的 MMEX 資料庫檔案。
-  - 執行 SQL 查詢，從 `ACCOUNTLIST_V1` (由 `DB_TABLE_ACCOUNTS` 常數定義) 表格中
-    選取 `ACCOUNTID` 和 `ACCOUNTNAME`。
-  - 將查詢結果轉換為 Pandas DataFrame。
-  - 回傳錯誤訊息 (如果有的話) 和包含帳戶資料的 DataFrame。
-- **`get_transactions(db_file, start_date_str, end_date_str, account_id=None)`**:
-  - *此函數在之前的對話中已被修改以支援標籤 (tags) 的讀取，並在標籤相關表格不存在時優雅地回退。*
-  - 驗證日期字串格式。
-  - 連接到 MMEX 資料庫。
-  - **建構 SQL 查詢**:
-    - **主要查詢 (嘗試包含標籤)**:
-      - `SELECT` 交易日期 (`TRANSDATE`)、帳戶名稱 (`ACCOUNTNAME`)、收款人 
-        (`PAYEENAME`)、分類 (`CATEGNAME`)、備註 (`NOTES`)、金額 (`TRANSAMOUNT`)、
-        交易的帳戶ID (`TRANSACTION_ACCOUNTID`) 以及使用 `GROUP_CONCAT(tag.TAGNAME)` 
-        彙總的標籤 (`TAGNAMES`)。
-      - `FROM CHECKINGACCOUNT_V1` (交易表)。
-      - `LEFT JOIN` `ACCOUNTLIST_V1` (帳戶表)、`PAYEE_V1` (收款人表)、
-        `CATEGORY_V1` (分類表)。
-      - `LEFT JOIN TAG_V1` (標籤表) 和 `TAGLINK_V1` (交易-標籤對應表，並篩選 `REFTYPE = 'Transaction'`) 
-        來獲取標籤資訊。
-      - `WHERE TRANSDATE` 在指定的開始和結束日期之間 (結束日期會加一天以包含當
-        天)。
-      - 如果提供了 `account_id`，則增加 `AND trans.ACCOUNTID = ?` 的篩選條件。
-      - `GROUP BY trans.TRANSID` 以確保每個交易只有一列，並正確彙總標籤。
-      - `ORDER BY TRANSDATE ASC, TRANSID ASC`。
-    - **備援查詢 (不含標籤)**:
-      - 如果上述包含標籤的查詢因為找不到標籤相關表格 (例如 `TAG_V1` 或 `TAGLINK_V1`) 
-        而失敗 (捕獲 `sqlite3.OperationalError` 或 `pd.io.sql.DatabaseError`)：
-        - 會印出警告訊息。
-        - 設定 `tags_column_present = False`。
-        - 執行一個不包含標籤相關 `SELECT`、`JOIN` 或 `GROUP BY` 的簡化版 SQL 查
-          詢。
-  - 使用 `pd.read_sql_query()` 執行查詢並將結果載入 DataFrame。
-  - 回傳錯誤訊息 (如果有的話)、包含交易資料的 DataFrame，以及一個布林值 
-    `tags_column_present` 指示標籤欄位是否成功查詢 (此布林值在實際程式碼中並未直接回傳，
-    而是透過 DataFrame 是否包含 'TAGNAMES' 欄位來隱含判斷)。
+  - 從 `.env` 檔案載入 `DB_FILE_PATH` 環境變數
+  - 包含完整的檔案存在性檢查和錯誤處理
 
-- **`get_balance_as_of_date(db_file, account_id, initial_balance, end_date_str)`**:
-  - 計算特定帳戶在指定結束日期前的餘額。
-  - 連接到資料庫，查詢該帳戶在結束日期之前所有交易的總金額。
-  - 餘額 = 初始餘額 + 交易總額。
-  - 回傳錯誤訊息 (如果有的話) 和計算出的餘額。
+- **`get_all_accounts(db_path)`**:
+  - 回傳格式: `(error_message, DataFrame)`
+  - 包含資料庫路徑驗證和 SQLite 錯誤處理
+  - 查詢帳戶 ID、名稱和初始餘額
 
-### 4. 全域查詢邏輯 (`run_global_query`)
+- **`get_transactions(db_path, start_date_str, end_date_str, account_id=None)`**:
+  - 回傳格式: `(error_message, DataFrame)`
+  - 包含完整的參數驗證 (日期格式、邏輯範圍檢查)
+  - 支援標籤查詢，在標籤表格不存在時優雅降級
+  - 具體的 SQLite 和 Pandas 錯誤處理
 
-- 當日期輸入改變或應用程式初次載入時觸發。
-- 獲取開始和結束日期輸入框中的值。
-- 檢查資料庫路徑是否已設定。
-- 更新「所有交易」分頁的狀態標籤為「查詢中...」。
-  - 呼叫 `get_transactions()`，傳入 `account_id=None` 以獲取所有帳戶在指定日期範
-    圍內的交易。
-  - 將查詢結果 (DataFrame) 儲存在 `self.all_transactions_df`。
-  - 將 `get_transactions()` 回傳的 `tags_were_queried_successfully` 標誌儲存
-    在 `self.tags_available_in_current_df`。
-  - 如果查詢成功且有資料：
-    - 呼叫 `_populate_grid_with_dataframe()` 將 `self.all_transactions_df` 的內
-      容填充到「所有交易」分頁的網格中。
-  - 如果查詢失敗或沒有資料，顯示相應的錯誤或提示訊息，並確保 `self.all_transactions_df` 為 `None`。
-  - 呼叫 `self.on_tab_switch()` 以刷新目前活動分頁的內容 (因為全域資料已更新)。
+- **`calculate_balance_for_account(db_path, account_id, date=None)`**:
+  - 回傳格式: `(error_message, balance)`
+  - 包含輸入驗證和資料庫檔案存在性檢查
+  - 處理帳戶不存在的情況
+  - 自動從資料庫讀取初始餘額
 
-### 5. 分頁管理與切換
+### 5. 全域查詢與資料處理
 
-- **`_create_all_transactions_tab()`**: 如上所述，建立固定的「所有交易」分頁。
+- **`run_global_query()`**:
+  - 從日期輸入欄位獲取查詢範圍
+  - 呼叫 `get_transactions()` 並處理錯誤回傳
+  - 將結果儲存在 `self.all_transactions_df`
+  - 自動呼叫 `apply_search_filter()` 更新篩選結果
+
+- **`apply_search_filter()`**:
+  - 根據搜尋條件和篩選類型處理資料
+  - 更新 `self.filtered_transactions_df`
+  - 刷新目前活動分頁的顯示
+
+- **日期驗證與變更處理**:
+  - `_validate_date()`: 使用 `UIConstants.DATE_FORMAT` 驗證日期格式
+  - `_on_date_change()`: 在日期變更時觸發查詢，包含驗證邏輯
+
+### 6. 分頁管理與切換 (重構後的模組化設計)
+
+- **`on_tab_switch(instance, tab)`**: 主要分頁切換處理器
+  - 根據分頁類型呼叫對應的更新方法
+  - 支援「所有交易」、「圖表」和帳戶專用分頁
+
+- **`_update_all_transactions_tab()`**: 
+  - 使用 `populate_grid_with_dataframe()` 更新所有交易網格
+  - 顯示篩選後的交易數量
+  - 支援排序功能
+
+- **`_update_account_tab(account_name)`**:
+  - 根據帳戶名稱篩選交易資料
+  - 更新帳戶專用網格和狀態標籤
+  - 呼叫 `_update_account_balance()` 更新餘額
+
+- **`_update_account_balance(account_id, account_info, content)`**:
+  - 包含日期驗證邏輯
+  - 呼叫 `calculate_balance_for_account()` 並處理錯誤
+  - 格式化餘額顯示
+
 - **`load_account_specific_tabs()`**:
-  - 從資料庫獲取所有帳戶。
-  - 為每個帳戶建立一個 `TabbedPanelHeader` (作為分頁標題) 和一個 
-    `AccountTabContent` (作為分頁內容)。
-  - 將帳戶 ID 和完整帳戶名稱儲存在 `TabbedPanelHeader` 物件上，方便後續取用。
-- **`on_tab_switch(tab_panel_instance, current_tab_header)`**:
-  - 當使用者切換分頁時觸發。
-  - **如果切換到「所有交易」分頁**:
-    - 使用 `self.all_transactions_df` 和 `self.tags_available_in_current_df` 重
-      新填充其網格 (`self.all_transactions_grid`)。
-  - **如果切換到某個帳戶專用分頁**:
-    - 獲取該分頁對應的帳戶 ID、帳戶名稱和初始餘額。
-    - 呼叫 `get_balance_as_of_date()` 計算並更新該帳戶的餘額顯示。
-    - 檢查 `self.all_transactions_df` 是否存在 (即全域查詢是否已執行)。
-    - 如果存在，則從 `self.all_transactions_df` 中篩選出屬於該帳戶的交易記錄 (基於 `TRANSACTION_ACCOUNTID` 與分頁的 `account_id` 進行比較)。
-    - 使用篩選後的 DataFrame 填充該帳戶分
-      頁的網格。
-    - 如果 `self.all_transactions_df` 不存在，提示使用者先執行全域查詢。
+  - 處理 `get_all_accounts()` 的錯誤回傳
+  - 為每個帳戶建立 `AccountTabContent` 實例
+  - 將帳戶資訊儲存在 `self.account_tabs` 字典中
 
-### 6. 資料顯示 (`_populate_grid_with_dataframe`)
+### 7. UI 元件建立方法
 
-- 此輔助函式用於將 DataFrame 中的資料填充到指定的 Kivy `GridLayout` 中。
-- **參數**:
-  - `target_grid`: 要填充的 `GridLayout` 元件。
-  - `df`: 包含交易資料的 Pandas DataFrame。
-  - `status_label_widget`: 用於顯示狀態訊息的 `Label` 元件。
-  - `tags_available`: 布林值，指示是否應顯示「標籤」欄。
-  - `status_message_prefix`: 狀態訊息的前綴。
-- **流程**:
-  - 清除 `target_grid` 中的所有現有元件。
-  - 如果 `df` 為空或 `None`，顯示「無資料」訊息。
-  - **動態設定欄數和表頭**:
-    - 固定設定網格為 7 欄。
-    - 表頭固定為："Date", "Account", "Payee", "Category", "Notes", "Amount", "Tags"。
-  - 為每個表頭文字建立 `Label` 並加入網格。
-  - 遍歷 DataFrame 的每一列：
-    - 格式化日期 (移除時間部分)。
-    - 建立包含該行各欄位資料的列表 (如果 'TAGNAMES' 欄位不存在或為空，則標籤資料為空字串)。
-    - 為列表中的每個項目建立 `Label` 並加入網格。
-  - 更新 `status_label_widget` 的文字，顯示找到的記錄數量或「無記錄」訊息。
+- **`_create_date_inputs()`**:
+  - 建立開始和結束日期輸入欄位
+  - 綁定 `_on_date_change` 事件處理器
+  - 使用 `UIConstants` 中定義的高度和間距
 
-### 7. 事件處理
+- **`_create_search_filter_layout()`**:
+  - 建立搜尋輸入欄位和篩選按鈕
+  - 支援多種篩選類型 (所有欄位、帳戶、收款人等)
+  - 包含清除篩選功能
 
-- **日期輸入驗證 (`trigger_global_query_on_date_change`)**: 當日期輸入框失去焦點
-  或按下 Enter 時，呼叫 `run_global_query()`。
-- **分頁切換 (`on_tab_switch`)**: 如上所述，處理分頁內容的更新。
-- **退出按鈕 (`exit_app`)**: 呼叫 `App.get_running_app().stop()` 關閉應用程式。
+- **`_create_tabbed_panel()`**:
+  - 建立主分頁面板
+  - 包含「所有交易」、「圖表」和帳戶專用分頁
+  - 使用統一的分頁樣式設定
 
-### 8. 錯誤處理與彈出視窗
+- **`_create_exit_button()`**:
+  - 建立退出按鈕並綁定事件
 
-- **`show_popup(title, message)`**:
-  - 建立一個包含標題、訊息和關閉按鈕的 `Popup` 元件。
-  - 用於向使用者顯示錯誤訊息或提示。
-  - 彈出視窗中訊息文字的顏色已調整為 `DEFAULT_TEXT_COLOR_ON_DARK_BG` (白色)，以
-    確保在深色背景下可見。
-- 資料庫操作 (如連接、查詢) 和日期解析都包含在 `try-except` 區塊中，捕獲到的錯誤
-  會透過 `show_popup` 顯示給使用者。
+### 8. 資料顯示與排序
 
-### 9. 組態設定
+- **`populate_grid_with_dataframe()` (來自 ui_components.py)**:
+  - 模組化的網格填充函數
+  - 支援可點擊的欄位標題進行排序
+  - 使用 `UIConstants.TRANSACTION_HEADERS` 定義欄位
+  - 自動處理空資料和錯誤狀態
 
-- **`.env` 檔案**: 儲存 `DB_FILE_PATH`，即 MMEX 資料庫檔案的路徑。
-- **字型路徑 (`UNICODE_FONT_PATH`)**: 指定用於 UI 的字型檔案路徑。
-- **資料庫結構常數**:
-  - `DB_TABLE_*` 和 `DB_FIELD_*` 常數定義了 MMEX 資料庫中相關表格和欄位的名稱。
-    這使得在程式碼中引用這些名稱更加方便，並且如果 MMEX 的資料庫結構在未來版本中
-    發生變化，也更容易更新。
-  - 包含與交易、帳戶、收款人、分類以及標籤相關的表格和欄位。
+- **排序功能**:
+  - `sort_transactions()`: 處理欄位排序邏輯
+  - 支援升序/降序切換
+  - 記住目前排序狀態
 
-這個流程概述應該能幫助開發者理解 `mmex_kivy_app.py` 的主要工作方式和不同部分之間
-的交互。
+### 9. 搜尋與篩選功能
+
+- **搜尋功能**:
+  - `_on_search_change()`: 即時搜尋事件處理
+  - 支援多欄位搜尋 (帳戶、收款人、分類、備註、標籤)
+  - 不區分大小寫的文字匹配
+
+- **篩選功能**:
+  - `_show_filter_options()`: 顯示篩選選項彈出視窗
+  - `_select_filter_option()`: 處理篩選選項選擇
+  - `_clear_search_filter()`: 清除所有搜尋和篩選條件
+
+### 10. 錯誤處理與使用者介面
+
+- **統一錯誤處理**:
+  - 所有資料庫函數都回傳 `(error, data)` 元組
+  - 使用 `show_popup()` (來自 ui_components.py) 顯示錯誤訊息
+  - 包含具體的錯誤類型處理 (SQLite 錯誤、檔案不存在等)
+
+- **輸入驗證**:
+  - `_validate_date()`: 統一的日期格式驗證
+  - 資料庫路徑存在性檢查
+  - 參數完整性驗證
+
+### 11. 視覺化功能
+
+- **圖表分頁**:
+  - 整合 `VisualizationTab` 類別
+  - 支援收入/支出趨勢圖表
+  - 分類別支出分析
+
+### 12. 組態與常數管理
+
+- **UIConstants 類別**:
+  - 集中管理所有 UI 相關常數
+  - 包含視窗尺寸、字型大小、元件高度等
+  - 統一的交易標題和篩選選項定義
+
+- **模組化設計**:
+  - 資料庫操作分離到 `db_utils.py`
+  - UI 元件分離到 `ui_components.py`
+  - 視覺化功能分離到 `visualization.py`
+
+- **設定檔案**:
+  - `.env` 檔案儲存資料庫路徑
+  - 字型檔案路徑設定
+  - 資料庫結構常數定義
+
+### 13. 程式碼品質改進
+
+- **模組化重構**:
+  - 將大型方法拆分為小型輔助方法
+  - 提高程式碼可讀性和維護性
+  - 減少程式碼重複
+
+- **一致性改進**:
+  - 統一的錯誤處理模式
+  - 一致的命名慣例
+  - 標準化的回傳格式
+
+這個重構後的架構提供了更好的可維護性、錯誤處理和使用者體驗，同時保持了原有的所有功能。
