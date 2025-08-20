@@ -67,6 +67,20 @@ class UIConstants:
     TAB_HEIGHT = 50
     SCROLL_DISTANCE = 20
     
+    # Responsive breakpoints
+    MOBILE_BREAKPOINT = 600
+    TABLET_BREAKPOINT = 1024
+    DESKTOP_BREAKPOINT = 1200
+    
+    # Responsive sizing
+    MOBILE_PADDING = 5
+    TABLET_PADDING = 8
+    DESKTOP_PADDING = 10
+    
+    MOBILE_SPACING = 3
+    TABLET_SPACING = 5
+    DESKTOP_SPACING = 10
+    
     # Transaction headers
     TRANSACTION_HEADERS = ["Date", "Account", "Payee", "Category", "Tags", "Notes", "Amount"]
     
@@ -83,9 +97,10 @@ class MMEXAppLayout(BoxLayout):
     def __init__(self, **kwargs):
         super(MMEXAppLayout, self).__init__(**kwargs)
         self.orientation = "vertical"
-        self.padding = 10
-        self.spacing = 10
-
+        
+        # Initialize responsive properties
+        self._setup_responsive_layout()
+        
         # Initialize state variables
         self.db_path = load_db_path()
         self.current_sort_column = None
@@ -103,6 +118,74 @@ class MMEXAppLayout(BoxLayout):
         # Initialize data
         self.load_account_specific_tabs()
         self.run_global_query()
+        
+        # Bind to window resize events for responsive updates
+        from kivy.core.window import Window
+        Window.bind(on_resize=self._on_window_resize)
+    
+    def _setup_responsive_layout(self):
+        """Setup responsive layout properties based on screen size."""
+        from kivy.core.window import Window
+        screen_width = Window.width
+        
+        if screen_width <= UIConstants.MOBILE_BREAKPOINT:
+            self.padding = UIConstants.MOBILE_PADDING
+            self.spacing = UIConstants.MOBILE_SPACING
+            self.is_mobile = True
+            self.is_tablet = False
+            self.is_desktop = False
+        elif screen_width <= UIConstants.TABLET_BREAKPOINT:
+            self.padding = UIConstants.TABLET_PADDING
+            self.spacing = UIConstants.TABLET_SPACING
+            self.is_mobile = False
+            self.is_tablet = True
+            self.is_desktop = False
+        else:
+            self.padding = UIConstants.DESKTOP_PADDING
+            self.spacing = UIConstants.DESKTOP_SPACING
+            self.is_mobile = False
+            self.is_tablet = False
+            self.is_desktop = True
+    
+    def _on_window_resize(self, window, width, height):
+        """Handle window resize events to update responsive layout."""
+        old_is_mobile = getattr(self, 'is_mobile', False)
+        old_is_tablet = getattr(self, 'is_tablet', False)
+        old_is_desktop = getattr(self, 'is_desktop', True)
+        
+        self._setup_responsive_layout()
+        
+        # Only update layout if screen category changed
+        if (old_is_mobile != self.is_mobile or 
+            old_is_tablet != self.is_tablet or 
+            old_is_desktop != self.is_desktop):
+            self._update_responsive_components()
+    
+    def _update_responsive_components(self):
+        """Update component sizing based on current screen size."""
+        # Update date inputs layout
+        if hasattr(self, 'date_layout'):
+            if self.is_mobile:
+                self.date_layout.orientation = 'vertical'
+                self.start_date_input.size_hint = (1, None)
+                self.end_date_input.size_hint = (1, None)
+            else:
+                self.date_layout.orientation = 'horizontal'
+                self.start_date_input.size_hint = (0.5, None)
+                self.end_date_input.size_hint = (0.5, None)
+        
+        # Update search filter layout
+        if hasattr(self, 'search_filter_layout'):
+            if self.is_mobile:
+                self.search_filter_layout.orientation = 'vertical'
+                self.search_input.size_hint = (1, None)
+                self.filter_button.size_hint = (1, None)
+                self.clear_filter_button.size_hint = (1, None)
+            else:
+                self.search_filter_layout.orientation = 'horizontal'
+                self.search_input.size_hint = (0.6, None)
+                self.filter_button.size_hint = (0.2, None)
+                self.clear_filter_button.size_hint = (0.2, None)
 
     def run_global_query(self):
         """Execute the global transaction query and update the UI."""
@@ -193,30 +276,58 @@ class MMEXAppLayout(BoxLayout):
             print(f"Error calculating balance for {account_info['name']}: {e}")
 
     def _create_date_inputs(self):
-        """Create date input fields with validation."""
-        date_layout = BoxLayout(size_hint=(1, None), height=40, spacing=10)
+        """Create date input fields with responsive validation."""
+        # Create responsive date layout
+        if self.is_mobile:
+            self.date_layout = BoxLayout(orientation='vertical', size_hint=(1, None), height=80, spacing=self.spacing)
+        else:
+            self.date_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40, spacing=self.spacing)
 
-        # Start date input
-        date_layout.add_widget(Label(text="Start Date:", size_hint=(None, 1), width=80))
-        self.start_date_input = TextInput(
-            text=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
-            multiline=False,
-            size_hint=(0.5, 1),
-        )
+        # Start date section
+        if self.is_mobile:
+            start_section = BoxLayout(orientation='horizontal', size_hint=(1, 0.5), spacing=5)
+            start_section.add_widget(Label(text="Start Date:", size_hint=(0.3, 1)))
+            self.start_date_input = TextInput(
+                text=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
+                multiline=False,
+                size_hint=(0.7, 1),
+            )
+            start_section.add_widget(self.start_date_input)
+            self.date_layout.add_widget(start_section)
+        else:
+            self.date_layout.add_widget(Label(text="Start Date:", size_hint=(None, 1), width=80))
+            self.start_date_input = TextInput(
+                text=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
+                multiline=False,
+                size_hint=(0.5, 1),
+            )
+            self.date_layout.add_widget(self.start_date_input)
+        
         self.start_date_input.bind(text=self._on_date_change)
-        date_layout.add_widget(self.start_date_input)
 
-        # End date input
-        date_layout.add_widget(Label(text="End Date:", size_hint=(None, 1), width=70))
-        self.end_date_input = TextInput(
-            text=datetime.now().strftime("%Y-%m-%d"),
-            multiline=False,
-            size_hint=(0.5, 1),
-        )
+        # End date section
+        if self.is_mobile:
+            end_section = BoxLayout(orientation='horizontal', size_hint=(1, 0.5), spacing=5)
+            end_section.add_widget(Label(text="End Date:", size_hint=(0.3, 1)))
+            self.end_date_input = TextInput(
+                text=datetime.now().strftime("%Y-%m-%d"),
+                multiline=False,
+                size_hint=(0.7, 1),
+            )
+            end_section.add_widget(self.end_date_input)
+            self.date_layout.add_widget(end_section)
+        else:
+            self.date_layout.add_widget(Label(text="End Date:", size_hint=(None, 1), width=70))
+            self.end_date_input = TextInput(
+                text=datetime.now().strftime("%Y-%m-%d"),
+                multiline=False,
+                size_hint=(0.5, 1),
+            )
+            self.date_layout.add_widget(self.end_date_input)
+        
         self.end_date_input.bind(text=self._on_date_change)
-        date_layout.add_widget(self.end_date_input)
 
-        self.add_widget(date_layout)
+        self.add_widget(self.date_layout)
 
     def _validate_date(self, date_str):
         """Validate date string format.
@@ -240,31 +351,62 @@ class MMEXAppLayout(BoxLayout):
             self.run_global_query()
 
     def _create_search_filter_layout(self):
-        """Create search and filter layout."""
-        search_layout = BoxLayout(size_hint=(1, None), height=40, spacing=10)
+        """Create responsive search and filter layout."""
+        # Create responsive search layout
+        if self.is_mobile:
+            self.search_filter_layout = BoxLayout(orientation='vertical', size_hint=(1, None), height=120, spacing=self.spacing)
+            
+            # Search section
+            search_section = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40, spacing=5)
+            search_section.add_widget(Label(text="Search:", size_hint=(0.25, 1)))
+            self.search_input = TextInput(multiline=False, size_hint=(0.75, 1))
+            search_section.add_widget(self.search_input)
+            self.search_filter_layout.add_widget(search_section)
+            
+            # Filter section
+            filter_section = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40, spacing=5)
+            filter_section.add_widget(Label(text="Filter By:", size_hint=(0.25, 1)))
+            self.filter_button = Button(
+                text="All Fields", size_hint=(0.75, 1), background_color=BUTTON_COLOR
+            )
+            filter_section.add_widget(self.filter_button)
+            self.search_filter_layout.add_widget(filter_section)
+            
+            # Clear button section
+            clear_section = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40, spacing=5)
+            clear_section.add_widget(Label(text="", size_hint=(0.25, 1)))  # Spacer
+            self.clear_filter_button = Button(
+                text="Clear Filter", size_hint=(0.75, 1), background_color=BUTTON_COLOR
+            )
+            clear_section.add_widget(self.clear_filter_button)
+            self.search_filter_layout.add_widget(clear_section)
+        else:
+            self.search_filter_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40, spacing=self.spacing)
+            
+            # Search input
+            self.search_filter_layout.add_widget(Label(text="Search:", size_hint=(None, 1), width=70))
+            self.search_input = TextInput(multiline=False, size_hint=(0.5, 1))
+            self.search_filter_layout.add_widget(self.search_input)
 
-        # Search input
-        search_layout.add_widget(Label(text="Search:", size_hint=(None, 1), width=70))
-        self.search_input = TextInput(multiline=False, size_hint=(0.5, 1))
+            # Filter type dropdown
+            self.search_filter_layout.add_widget(Label(text="Filter By:", size_hint=(None, 1), width=70))
+            self.filter_button = Button(
+                text="All Fields", size_hint=(0.3, 1), background_color=BUTTON_COLOR
+            )
+            self.search_filter_layout.add_widget(self.filter_button)
+
+            # Clear filter button
+            self.clear_filter_button = Button(
+                text="Clear", size_hint=(0.2, 1), background_color=BUTTON_COLOR
+            )
+            self.search_filter_layout.add_widget(self.clear_filter_button)
+        
+        # Bind events
         self.search_input.bind(text=self._on_search_change)
-        search_layout.add_widget(self.search_input)
-
-        # Filter type dropdown
-        search_layout.add_widget(Label(text="Filter By:", size_hint=(None, 1), width=70))
-        self.filter_button = Button(
-            text="All Fields", size_hint=(0.3, 1), background_color=BUTTON_COLOR
-        )
         self.filter_button.bind(on_release=self._show_filter_options)
-        search_layout.add_widget(self.filter_button)
-
-        # Clear filter button
-        self.clear_filter_button = Button(
-            text="Clear", size_hint=(0.2, 1), background_color=BUTTON_COLOR
-        )
         self.clear_filter_button.bind(on_release=self._clear_search_filter)
-        search_layout.add_widget(self.clear_filter_button)
 
-        self.add_widget(search_layout)
+        self.add_widget(self.search_filter_layout)
 
     def _create_tabbed_panel(self):
         """Create the tabbed panel for accounts."""
