@@ -481,20 +481,26 @@ class MMEXAppLayout(BoxLayout):
         self.tab_panel.add_widget(self.visualization_tab)
 
     def _create_exit_button(self):
-        """Create the exit button."""
-        exit_layout = BoxLayout(size_hint=(1, None), height=40)
+        """Create responsive exit button."""
+        self.exit_layout = BoxLayout(size_hint=(1, None), height=40, spacing=self.spacing)
 
-        # Add spacer
-        exit_layout.add_widget(Widget(size_hint=(0.8, 1)))
-
-        # Exit button
-        exit_button = Button(
-            text="Exit", size_hint=(0.2, 1), background_color=BUTTON_COLOR
-        )
+        if self.is_mobile:
+            # On mobile, make exit button full width for easier tapping
+            exit_button = Button(
+                text="Exit Application", size_hint=(1, 1), background_color=BUTTON_COLOR
+            )
+        else:
+            # Add spacer on larger screens
+            self.exit_layout.add_widget(Widget(size_hint=(0.8, 1)))
+            # Exit button
+            exit_button = Button(
+                text="Exit", size_hint=(0.2, 1), background_color=BUTTON_COLOR
+            )
+        
         exit_button.bind(on_release=self.exit_app)
-        exit_layout.add_widget(exit_button)
+        self.exit_layout.add_widget(exit_button)
 
-        self.add_widget(exit_layout)
+        self.add_widget(self.exit_layout)
 
     def load_account_specific_tabs(self):
         """Load account-specific tabs."""
