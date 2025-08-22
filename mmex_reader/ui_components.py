@@ -20,38 +20,78 @@ BUTTON_COLOR = (0.3, 0.5, 0.7, 1)  # Slightly darker blue for buttons
 HIGHLIGHT_COLOR = (0.1, 0.7, 0.1, 1)  # Green for highlights
 
 class AccountTabContent(BoxLayout):
-    """Content for an account-specific tab."""
+    """Content for an account-specific tab with responsive design."""
     
     def __init__(self, account_id, account_name, **kwargs):
         super(AccountTabContent, self).__init__(**kwargs)
         self.orientation = 'vertical'
         self.account_id = account_id
         self.account_name = account_name
-        self.padding = 10
-        self.spacing = 10
         
-        # Account info header
-        self.header = BoxLayout(size_hint=(1, None), height=40, spacing=10)
+        # Determine responsive properties
+        from kivy.core.window import Window
+        screen_width = Window.width
         
-        # Account name label
-        self.account_label = Label(
-            text=f"Account: {account_name}",
-            size_hint=(0.7, 1),
-            halign='left',
-            valign='middle',
-            text_size=(None, None)  # Will be set in on_size
-        )
-        self.header.add_widget(self.account_label)
+        if screen_width <= 600:  # Mobile
+            self.padding = 5
+            self.spacing = 3
+            self.is_mobile = True
+        elif screen_width <= 1024:  # Tablet
+            self.padding = 8
+            self.spacing = 5
+            self.is_mobile = False
+        else:  # Desktop
+            self.padding = 10
+            self.spacing = 10
+            self.is_mobile = False
         
-        # Balance label
-        self.balance_label = Label(
-            text="Balance: Loading...",
-            size_hint=(0.3, 1),
-            halign='right',
-            valign='middle',
-            text_size=(None, None)  # Will be set in on_size
-        )
-        self.header.add_widget(self.balance_label)
+        # Account info header with responsive layout
+        if self.is_mobile:
+            # Stack account info vertically on mobile
+            self.header = BoxLayout(orientation='vertical', size_hint=(1, None), height=60, spacing=self.spacing)
+            
+            # Account name label
+            self.account_label = Label(
+                text=f"Account: {account_name}",
+                size_hint=(1, 0.5),
+                halign='center',
+                valign='middle',
+                text_size=(None, None)
+            )
+            self.header.add_widget(self.account_label)
+            
+            # Balance label
+            self.balance_label = Label(
+                text="Balance: Loading...",
+                size_hint=(1, 0.5),
+                halign='center',
+                valign='middle',
+                text_size=(None, None)
+            )
+            self.header.add_widget(self.balance_label)
+        else:
+            # Horizontal layout for larger screens
+            self.header = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40, spacing=self.spacing)
+            
+            # Account name label
+            self.account_label = Label(
+                text=f"Account: {account_name}",
+                size_hint=(0.7, 1),
+                halign='left',
+                valign='middle',
+                text_size=(None, None)
+            )
+            self.header.add_widget(self.account_label)
+            
+            # Balance label
+            self.balance_label = Label(
+                text="Balance: Loading...",
+                size_hint=(0.3, 1),
+                halign='right',
+                valign='middle',
+                text_size=(None, None)
+            )
+            self.header.add_widget(self.balance_label)
         
         self.add_widget(self.header)
         
@@ -60,7 +100,7 @@ class AccountTabContent(BoxLayout):
             text=f"Transactions for {account_name}",
             size_hint=(1, None),
             height=30,
-            halign='left',
+            halign='left' if not self.is_mobile else 'center',
             valign='middle'
         )
         self.add_widget(self.results_label)
@@ -68,8 +108,14 @@ class AccountTabContent(BoxLayout):
         # Transactions grid in a scroll view
         self.scroll_view = ScrollView(size_hint=(1, 1))  # Take all remaining space
         
-        # Grid for transactions
-        self.results_grid = GridLayout(cols=6, spacing=2, size_hint_y=None)
+        # Grid for transactions with responsive columns
+        if self.is_mobile:
+            # Fewer columns on mobile for better readability
+            self.results_grid = GridLayout(cols=4, spacing=1, size_hint_y=None)
+        else:
+            # Full columns on larger screens
+            self.results_grid = GridLayout(cols=6, spacing=2, size_hint_y=None)
+        
         # The height will be set based on the children
         self.results_grid.bind(minimum_height=self.results_grid.setter('height'))
         
@@ -205,7 +251,7 @@ def _create_data_label(text, num_columns):
     return label
 
 def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None):
-    """Populate a grid layout with data from a DataFrame.
+    """Populate a grid layout with data from a DataFrame with responsive design.
     
     Args:
         grid: The GridLayout to populate
@@ -216,11 +262,21 @@ def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None):
     # Clear existing widgets
     grid.clear_widgets()
     
-    # Set number of columns based on headers or DataFrame columns
-    if headers:
-        grid.cols = len(headers)
+    # Determine if we're on mobile based on grid column count
+    is_mobile = grid.cols == 4
+    
+    # Define mobile-friendly column subsets
+    if is_mobile and headers:
+        # Show only essential columns on mobile
+        mobile_headers = ["Date", "Payee", "Amount", "Category"]
+        display_headers = [h for h in mobile_headers if h in headers]
+        grid.cols = len(display_headers)
     else:
-        grid.cols = len(df.columns) if not df.empty else 1
+        display_headers = headers if headers else list(df.columns)
+        if headers:
+            grid.cols = len(headers)
+        else:
+            grid.cols = len(df.columns) if not df.empty else 1
     
     # Handle empty DataFrame
     if df.empty:
@@ -228,7 +284,7 @@ def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None):
         return
     
     # Add headers if provided
-    if headers:
+    if display_headers:
         # Map headers to actual column names
         column_mapping = {
             "Date": "TRANSDATE",
@@ -240,25 +296,41 @@ def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None):
             "Amount": "TRANSAMOUNT"
         }
         
-        for header in headers:
+        for header in display_headers:
             if sort_callback and header in column_mapping:
                 # Create sortable header button
                 header_btn = SortableHeaderButton(
                     text=header,
                     column_name=column_mapping[header],
                     sort_callback=sort_callback,
-                    size_hint_x=1/len(headers)
+                    size_hint_x=1/len(display_headers)
                 )
                 grid.add_widget(header_btn)
             else:
                 # Create regular header label
                 header_label = create_header_label(header)
-                header_label.size_hint_x = 1/len(headers)
+                header_label.size_hint_x = 1/len(display_headers)
                 grid.add_widget(header_label)
     
-    # Add data rows
+    # Add data rows with responsive column filtering
+    if display_headers:
+        # Map display headers to DataFrame columns
+        header_to_column = {
+            "Date": "TRANSDATE",
+            "Account": "ACCOUNTNAME", 
+            "Payee": "PAYEENAME",
+            "Category": "CATEGNAME",
+            "Tags": "TAGNAMES",
+            "Notes": "NOTES",
+            "Amount": "TRANSAMOUNT"
+        }
+        
+        display_columns = [header_to_column.get(h, h) for h in display_headers if header_to_column.get(h, h) in df.columns]
+    else:
+        display_columns = df.columns
+    
     for _, row in df.iterrows():
-        for col in df.columns:
+        for col in display_columns:
             value = row[col]
             # Format value based on column type
             if col in ('TRANSAMOUNT', 'TOTRANSAMOUNT'):
@@ -268,52 +340,14 @@ def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None):
             else:
                 text = str(value) if pd.notna(value) else ""
             
-            label = _create_data_label(text, len(df.columns))
-            grid.add_widget(label)
+            label = _create_data_label(text, len(display_columns))
             
             # Bind size to update text_size
             def update_text_size(label, *args):
                 label.text_size = (label.width, None)
             
             label.bind(width=update_text_size)
-            
             grid.add_widget(label)
-            
-            # Bind size to update text_size
-            def update_text_size(label, *args):
-                label.text_size = (label.width, None)
-            
-            label.bind(width=update_text_size)
-            
-            grid.add_widget(label)
-            
-            # Bind size to update text_size
-            def update_text_size(label, *args):
-                label.text_size = (label.width, None)
-            
-            label.bind(width=update_text_size)
-            
-            grid.add_widget(label)
-            
-            # Bind size to update text_size
-            def update_text_size(label, *args):
-                label.text_size = (label.width, None)
-            
-            label.bind(width=update_text_size)
-            
-            grid.add_widget(label)
-            
-            # Bind size to update text_size
-            def update_text_size(label, *args):
-                label.text_size = (label.width, None)
-            
-            label.bind(width=update_text_size)
-            
-            grid.add_widget(label)
-            
-            # Bind size to update text_size
-            def update_text_size(label, *args):
-                label.text_size = (label.width, None)
             
             label.bind(width=update_text_size)
             
