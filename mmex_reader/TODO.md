@@ -4,12 +4,12 @@ After reviewing your MMEX Kivy application code, here are several improvement su
 
 ## User Interface Enhancements
 
-- [ ] Add Search/Filter Functionality : Implement a search box to filter 
+- [x] Add Search/Filter Functionality : Implement a search box to filter 
    transactions by payee, category, or notes.
-- [ ] Data Visualization : Add simple charts or graphs to visualize spending by 
+- [x] Data Visualization : Add simple charts or graphs to visualize spending by 
    category or over time.
-- [ ] Sortable Columns : Make the transaction grid columns sortable by clicking on headers.
-- [ ] Responsive Layout : Improve the responsiveness for different screen sizes 
+- [x] Sortable Columns : Make the transaction grid columns sortable by clicking on headers.
+- [x] Responsive Layout : Improve the responsiveness for different screen sizes 
    using size_hint properties more effectively.
 - [ ] Date Picker Widget : Replace text inputs for dates with a proper date picker 
    widget for better user experience.
