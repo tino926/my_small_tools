@@ -10,14 +10,234 @@ from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
+from kivy.uix.textinput import TextInput
 from kivy.graphics import Color, Rectangle
 import pandas as pd
+from datetime import datetime, timedelta
+import calendar
 
 # UI color constants
 BG_COLOR = (0.9, 0.9, 0.9, 1)  # Light gray background
 HEADER_COLOR = (0.2, 0.6, 0.8, 1)  # Blue header
 BUTTON_COLOR = (0.3, 0.5, 0.7, 1)  # Slightly darker blue for buttons
 HIGHLIGHT_COLOR = (0.1, 0.7, 0.1, 1)  # Green for highlights
+
+
+class DatePickerWidget(BoxLayout):
+    """A custom date picker widget with calendar interface."""
+    
+    def __init__(self, initial_date=None, callback=None, **kwargs):
+        super(DatePickerWidget, self).__init__(**kwargs)
+        self.orientation = 'vertical'
+        self.size_hint = (None, None)
+        self.size = (300, 350)
+        self.callback = callback
+        
+        # Set initial date
+        if initial_date:
+            if isinstance(initial_date, str):
+                self.current_date = datetime.strptime(initial_date, "%Y-%m-%d")
+            else:
+                self.current_date = initial_date
+        else:
+            self.current_date = datetime.now()
+            
+        self.selected_date = self.current_date
+        
+        # Create the date picker interface
+        self._create_header()
+        self._create_calendar()
+        self._create_footer()
+        
+    def _create_header(self):
+        """Create the header with month/year navigation."""
+        header_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40)
+        
+        # Previous month button
+        prev_btn = Button(text='<', size_hint=(None, 1), width=40, background_color=BUTTON_COLOR)
+        prev_btn.bind(on_release=self._prev_month)
+        header_layout.add_widget(prev_btn)
+        
+        # Month/Year label
+        self.month_year_label = Label(
+            text=self.current_date.strftime("%B %Y"),
+            size_hint=(1, 1),
+            halign='center',
+            valign='middle'
+        )
+        self.month_year_label.bind(size=self.month_year_label.setter('text_size'))
+        header_layout.add_widget(self.month_year_label)
+        
+        # Next month button
+        next_btn = Button(text='>', size_hint=(None, 1), width=40, background_color=BUTTON_COLOR)
+        next_btn.bind(on_release=self._next_month)
+        header_layout.add_widget(next_btn)
+        
+        self.add_widget(header_layout)
+        
+    def _create_calendar(self):
+        """Create the calendar grid."""
+        # Day headers
+        day_headers = BoxLayout(orientation='horizontal', size_hint=(1, None), height=30)
+        for day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']:
+            label = Label(text=day, size_hint=(1, 1), bold=True)
+            day_headers.add_widget(label)
+        self.add_widget(day_headers)
+        
+        # Calendar grid
+        self.calendar_grid = GridLayout(cols=7, size_hint=(1, 1), spacing=2)
+        self._populate_calendar()
+        self.add_widget(self.calendar_grid)
+        
+    def _create_footer(self):
+        """Create the footer with action buttons."""
+        footer_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40, spacing=10)
+        
+        # Today button
+        today_btn = Button(text='Today', size_hint=(0.5, 1), background_color=HIGHLIGHT_COLOR)
+        today_btn.bind(on_release=self._select_today)
+        footer_layout.add_widget(today_btn)
+        
+        # Cancel button
+        cancel_btn = Button(text='Cancel', size_hint=(0.5, 1), background_color=(0.7, 0.3, 0.3, 1))
+        cancel_btn.bind(on_release=self._cancel)
+        footer_layout.add_widget(cancel_btn)
+        
+        self.add_widget(footer_layout)
+        
+    def _populate_calendar(self):
+        """Populate the calendar grid with day buttons."""
+        self.calendar_grid.clear_widgets()
+        
+        # Get calendar data
+        cal = calendar.monthcalendar(self.current_date.year, self.current_date.month)
+        
+        for week in cal:
+            for day in week:
+                if day == 0:
+                    # Empty cell for days from other months
+                    self.calendar_grid.add_widget(Label(text=''))
+                else:
+                    # Day button
+                    day_btn = Button(
+                        text=str(day),
+                        size_hint=(1, 1),
+                        background_color=BG_COLOR
+                    )
+                    
+                    # Highlight selected date
+                    if (day == self.selected_date.day and 
+                        self.current_date.month == self.selected_date.month and
+                        self.current_date.year == self.selected_date.year):
+                        day_btn.background_color = HIGHLIGHT_COLOR
+                    
+                    # Highlight today
+                    today = datetime.now()
+                    if (day == today.day and 
+                        self.current_date.month == today.month and
+                        self.current_date.year == today.year):
+                        day_btn.background_color = HEADER_COLOR
+                    
+                    day_btn.bind(on_release=lambda btn, d=day: self._select_date(d))
+                    self.calendar_grid.add_widget(day_btn)
+                    
+    def _prev_month(self, instance):
+        """Navigate to previous month."""
+        if self.current_date.month == 1:
+            self.current_date = self.current_date.replace(year=self.current_date.year - 1, month=12)
+        else:
+            self.current_date = self.current_date.replace(month=self.current_date.month - 1)
+        self._update_display()
+        
+    def _next_month(self, instance):
+        """Navigate to next month."""
+        if self.current_date.month == 12:
+            self.current_date = self.current_date.replace(year=self.current_date.year + 1, month=1)
+        else:
+            self.current_date = self.current_date.replace(month=self.current_date.month + 1)
+        self._update_display()
+        
+    def _update_display(self):
+        """Update the calendar display."""
+        self.month_year_label.text = self.current_date.strftime("%B %Y")
+        self._populate_calendar()
+        
+    def _select_date(self, day):
+        """Select a specific date."""
+        self.selected_date = self.current_date.replace(day=day)
+        self._populate_calendar()
+        if self.callback:
+            self.callback(self.selected_date.strftime("%Y-%m-%d"))
+            
+    def _select_today(self, instance):
+        """Select today's date."""
+        today = datetime.now()
+        self.current_date = today
+        self.selected_date = today
+        self._update_display()
+        if self.callback:
+            self.callback(self.selected_date.strftime("%Y-%m-%d"))
+            
+    def _cancel(self, instance):
+        """Cancel date selection."""
+        if self.callback:
+            self.callback(None)
+            
+    def get_selected_date(self):
+        """Get the currently selected date as a string."""
+        return self.selected_date.strftime("%Y-%m-%d")
+
+
+class DatePickerButton(Button):
+    """A button that opens a date picker when clicked."""
+    
+    def __init__(self, initial_date=None, date_change_callback=None, **kwargs):
+        super(DatePickerButton, self).__init__(**kwargs)
+        self.date_change_callback = date_change_callback
+        self.background_color = BUTTON_COLOR
+        
+        # Set initial date
+        if initial_date:
+            self.current_date = initial_date
+        else:
+            self.current_date = datetime.now().strftime("%Y-%m-%d")
+            
+        self.text = self.current_date
+        self.bind(on_release=self._open_date_picker)
+        
+    def _open_date_picker(self, instance):
+        """Open the date picker popup."""
+        date_picker = DatePickerWidget(
+            initial_date=self.current_date,
+            callback=self._on_date_selected
+        )
+        
+        self.popup = Popup(
+            title='Select Date',
+            content=date_picker,
+            size_hint=(None, None),
+            size=(320, 400),
+            auto_dismiss=True
+        )
+        self.popup.open()
+        
+    def _on_date_selected(self, selected_date):
+        """Handle date selection from picker."""
+        if selected_date:
+            self.current_date = selected_date
+            self.text = selected_date
+            if self.date_change_callback:
+                self.date_change_callback(self, selected_date)
+        self.popup.dismiss()
+        
+    def get_date(self):
+        """Get the current date value."""
+        return self.current_date
+        
+    def set_date(self, date_str):
+        """Set the date value."""
+        self.current_date = date_str
+        self.text = date_str
 
 class AccountTabContent(BoxLayout):
     """Content for an account-specific tab with responsive design."""
