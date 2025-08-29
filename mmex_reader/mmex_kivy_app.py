@@ -46,6 +46,7 @@ from ui_components import (
     AccountTabContent,
     show_popup,
     populate_grid_with_dataframe,
+    DatePickerButton,
     BG_COLOR,
     BUTTON_COLOR,
 )
@@ -167,12 +168,16 @@ class MMEXAppLayout(BoxLayout):
         if hasattr(self, 'date_layout'):
             if self.is_mobile:
                 self.date_layout.orientation = 'vertical'
-                self.start_date_input.size_hint = (1, None)
-                self.end_date_input.size_hint = (1, None)
+                if hasattr(self, 'start_date_input'):
+                    self.start_date_input.size_hint = (1, None)
+                if hasattr(self, 'end_date_input'):
+                    self.end_date_input.size_hint = (1, None)
             else:
                 self.date_layout.orientation = 'horizontal'
-                self.start_date_input.size_hint = (0.5, None)
-                self.end_date_input.size_hint = (0.5, None)
+                if hasattr(self, 'start_date_input'):
+                    self.start_date_input.size_hint = (0.5, None)
+                if hasattr(self, 'end_date_input'):
+                    self.end_date_input.size_hint = (0.5, None)
         
         # Update search filter layout
         if hasattr(self, 'search_filter_layout'):
@@ -189,8 +194,8 @@ class MMEXAppLayout(BoxLayout):
 
     def run_global_query(self):
         """Execute the global transaction query and update the UI."""
-        start_date_str = self.start_date_input.text
-        end_date_str = self.end_date_input.text
+        start_date_str = self.start_date_input.get_date() if hasattr(self.start_date_input, 'get_date') else self.start_date_input.text
+        end_date_str = self.end_date_input.get_date() if hasattr(self.end_date_input, 'get_date') else self.end_date_input.text
 
         error, self.all_transactions_df = get_transactions(
             self.db_path, start_date_str, end_date_str
@@ -276,7 +281,7 @@ class MMEXAppLayout(BoxLayout):
             print(f"Error calculating balance for {account_info['name']}: {e}")
 
     def _create_date_inputs(self):
-        """Create date input fields with responsive validation."""
+        """Create date input fields with responsive validation using date picker widgets."""
         # Create responsive date layout
         if self.is_mobile:
             self.date_layout = BoxLayout(orientation='vertical', size_hint=(1, None), height=80, spacing=self.spacing)
@@ -287,45 +292,41 @@ class MMEXAppLayout(BoxLayout):
         if self.is_mobile:
             start_section = BoxLayout(orientation='horizontal', size_hint=(1, 0.5), spacing=5)
             start_section.add_widget(Label(text="Start Date:", size_hint=(0.3, 1)))
-            self.start_date_input = TextInput(
-                text=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
-                multiline=False,
+            self.start_date_input = DatePickerButton(
+                initial_date=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
+                date_change_callback=self._on_date_change,
                 size_hint=(0.7, 1),
             )
             start_section.add_widget(self.start_date_input)
             self.date_layout.add_widget(start_section)
         else:
             self.date_layout.add_widget(Label(text="Start Date:", size_hint=(None, 1), width=80))
-            self.start_date_input = TextInput(
-                text=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
-                multiline=False,
+            self.start_date_input = DatePickerButton(
+                initial_date=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
+                date_change_callback=self._on_date_change,
                 size_hint=(0.5, 1),
             )
             self.date_layout.add_widget(self.start_date_input)
-        
-        self.start_date_input.bind(text=self._on_date_change)
 
         # End date section
         if self.is_mobile:
             end_section = BoxLayout(orientation='horizontal', size_hint=(1, 0.5), spacing=5)
             end_section.add_widget(Label(text="End Date:", size_hint=(0.3, 1)))
-            self.end_date_input = TextInput(
-                text=datetime.now().strftime("%Y-%m-%d"),
-                multiline=False,
+            self.end_date_input = DatePickerButton(
+                initial_date=datetime.now().strftime("%Y-%m-%d"),
+                date_change_callback=self._on_date_change,
                 size_hint=(0.7, 1),
             )
             end_section.add_widget(self.end_date_input)
             self.date_layout.add_widget(end_section)
         else:
             self.date_layout.add_widget(Label(text="End Date:", size_hint=(None, 1), width=70))
-            self.end_date_input = TextInput(
-                text=datetime.now().strftime("%Y-%m-%d"),
-                multiline=False,
+            self.end_date_input = DatePickerButton(
+                initial_date=datetime.now().strftime("%Y-%m-%d"),
+                date_change_callback=self._on_date_change,
                 size_hint=(0.5, 1),
             )
             self.date_layout.add_widget(self.end_date_input)
-        
-        self.end_date_input.bind(text=self._on_date_change)
 
         self.add_widget(self.date_layout)
 
@@ -346,8 +347,10 @@ class MMEXAppLayout(BoxLayout):
     
     def _on_date_change(self, instance, value):
         """Trigger the global query when the date changes, with validation."""
-        if (self._validate_date(self.start_date_input.text) and 
-            self._validate_date(self.end_date_input.text)):
+        start_date = self.start_date_input.get_date() if hasattr(self.start_date_input, 'get_date') else self.start_date_input.text
+        end_date = self.end_date_input.get_date() if hasattr(self.end_date_input, 'get_date') else self.end_date_input.text
+        
+        if self._validate_date(start_date) and self._validate_date(end_date):
             self.run_global_query()
 
     def _create_search_filter_layout(self):
