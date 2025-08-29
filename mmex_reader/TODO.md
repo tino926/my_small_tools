@@ -11,7 +11,7 @@ After reviewing your MMEX Kivy application code, here are several improvement su
 - [x] Sortable Columns : Make the transaction grid columns sortable by clicking on headers.
 - [x] Responsive Layout : Improve the responsiveness for different screen sizes 
    using size_hint properties more effectively.
-- [ ] Date Picker Widget : Replace text inputs for dates with a proper date picker 
+- [x] Date Picker Widget : Replace text inputs for dates with a proper date picker 
    widget for better user experience.
 - [ ] Transaction Details View : Add ability to click on a transaction to see more 
    details or edit it.
