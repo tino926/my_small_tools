@@ -47,6 +47,7 @@ from ui_components import (
     show_popup,
     populate_grid_with_dataframe,
     DatePickerButton,
+    TransactionDetailsPopup,
     BG_COLOR,
     BUTTON_COLOR,
 )
@@ -223,6 +224,7 @@ class MMEXAppLayout(BoxLayout):
             self.filtered_transactions_df,
             UIConstants.TRANSACTION_HEADERS,
             sort_callback=self.sort_transactions,
+            row_click_callback=self.on_transaction_row_click,
         )
         self.all_transactions_status.text = f"{len(self.filtered_transactions_df)} transactions found"
     
@@ -246,6 +248,7 @@ class MMEXAppLayout(BoxLayout):
                         account_transactions,
                         UIConstants.TRANSACTION_HEADERS,
                         sort_callback=self.sort_transactions,
+                        row_click_callback=self.on_transaction_row_click,
                     )
                     content.results_label.text = f"{len(account_transactions)} transactions found"
 
@@ -693,6 +696,30 @@ class MMEXKivyApp(App):
         Window.size = (1200, 800)
         Window.minimum_width, Window.minimum_height = 800, 600
         Window.bind(on_resize=self._on_window_resize)
+
+    def on_transaction_row_click(self, transaction_data):
+        """Handle transaction row click to show details popup.
+        
+        Args:
+            transaction_data: Dictionary containing transaction information
+        """
+        def on_save_transaction(updated_data):
+            """Handle saving updated transaction data."""
+            # TODO: Implement database update functionality
+            show_popup('Save Transaction', 'Transaction save functionality will be implemented in a future update.')
+            
+        def on_delete_transaction(transaction_data):
+            """Handle deleting transaction."""
+            # TODO: Implement database delete functionality
+            show_popup('Delete Transaction', 'Transaction delete functionality will be implemented in a future update.')
+        
+        # Create and show transaction details popup
+        details_popup = TransactionDetailsPopup(
+            transaction_data=transaction_data,
+            on_save_callback=on_save_transaction,
+            on_delete_callback=on_delete_transaction
+        )
+        details_popup.show()
 
     def _configure_fonts(self):
         """Configure global font settings."""

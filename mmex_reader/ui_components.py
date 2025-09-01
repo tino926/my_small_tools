@@ -470,7 +470,7 @@ def _create_data_label(text, num_columns):
     label.bind(width=update_text_size)
     return label
 
-def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None):
+def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None, row_click_callback=None):
     """Populate a grid layout with data from a DataFrame with responsive design.
     
     Args:
@@ -478,6 +478,7 @@ def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None):
         df: The DataFrame containing the data
         headers: Optional list of column headers
         sort_callback: Optional callback function for sorting
+        row_click_callback: Optional callback function for row clicks
     """
     # Clear existing widgets
     grid.clear_widgets()
@@ -549,7 +550,10 @@ def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None):
     else:
         display_columns = df.columns
     
-    for _, row in df.iterrows():
+    for row_index, row in df.iterrows():
+        # Create a list to store row widgets for click handling
+        row_widgets = []
+        
         for col in display_columns:
             value = row[col]
             # Format value based on column type
@@ -567,15 +571,250 @@ def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None):
                 label.text_size = (label.width, None)
             
             label.bind(width=update_text_size)
-            grid.add_widget(label)
             
-            label.bind(width=update_text_size)
+            # Add click handling if callback is provided
+            if row_click_callback:
+                # Create a clickable button instead of label for better touch handling
+                clickable_label = Button(
+                    text=text,
+                    size_hint_y=None,
+                    height=UIConstants.ROW_HEIGHT,
+                    size_hint_x=1/len(display_columns),
+                    halign='left',
+                    valign='middle',
+                    background_color=(1, 1, 1, 0.1),  # Subtle background
+                    color=(0, 0, 0, 1)  # Text color
+                )
+                clickable_label.text_size = (None, None)
+                clickable_label.bind(size=clickable_label.setter('text_size'))
+                
+                # Bind click event with row data
+                def on_row_click(instance, row_data=row.to_dict()):
+                    row_click_callback(row_data)
+                
+                clickable_label.bind(on_press=on_row_click)
+                grid.add_widget(clickable_label)
+            else:
+                grid.add_widget(label)
+
+
+class TransactionDetailsPopup:
+    """A popup component for displaying and editing transaction details."""
+    
+    def __init__(self, transaction_data, on_save_callback=None, on_delete_callback=None):
+        """
+        Initialize the transaction details popup.
+        
+        Args:
+            transaction_data: Dictionary containing transaction information
+            on_save_callback: Callback function when transaction is saved
+            on_delete_callback: Callback function when transaction is deleted
+        """
+        self.transaction_data = transaction_data.copy() if transaction_data else {}
+        self.on_save_callback = on_save_callback
+        self.on_delete_callback = on_delete_callback
+        self.popup = None
+        self.input_fields = {}
+        
+    def show(self):
+        """Display the transaction details popup."""
+        content = self._create_content()
+        
+        self.popup = Popup(
+            title=f"Transaction Details - {self.transaction_data.get('TRANSDATE', 'Unknown Date')}",
+            content=content,
+            size_hint=(0.9, 0.9),
+            auto_dismiss=False
+        )
+        self.popup.open()
+        
+    def _create_content(self):
+        """Create the main content layout for the popup."""
+        main_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        
+        # Create scroll view for form fields
+        scroll = ScrollView()
+        form_layout = GridLayout(cols=2, spacing=10, size_hint_y=None, padding=10)
+        form_layout.bind(minimum_height=form_layout.setter('height'))
+        
+        # Define field configurations
+        field_configs = [
+            ('Transaction ID', 'TRANSID', False),  # Read-only
+            ('Date', 'TRANSDATE', True),
+            ('Account', 'ACCOUNTNAME', False),  # Read-only for now
+            ('Payee', 'PAYEENAME', True),
+            ('Category', 'CATEGNAME', True),
+            ('Amount', 'TRANSAMOUNT', True),
+            ('Transaction Code', 'TRANSCODE', True),
+            ('Notes', 'NOTES', True),
+            ('Tags', 'TAGNAMES', True),
+            ('Status', 'STATUS', True),
+            ('Follow Up', 'FOLLOWUPID', True)
+        ]
+        
+        # Create form fields
+        for label_text, field_key, editable in field_configs:
+            # Add label
+            label = Label(
+                text=f"{label_text}:",
+                size_hint_y=None,
+                height=40,
+                halign='right',
+                valign='middle'
+            )
+            label.bind(size=label.setter('text_size'))
+            form_layout.add_widget(label)
             
-            grid.add_widget(label)
+            # Add input field
+            value = str(self.transaction_data.get(field_key, '')) if self.transaction_data.get(field_key) is not None else ''
             
-            # Bind size to update text_size
-            def update_text_size(label, *args):
-                label.text_size = (label.width, None)
+            if field_key == 'NOTES':
+                # Multi-line text input for notes
+                text_input = TextInput(
+                    text=value,
+                    multiline=True,
+                    size_hint_y=None,
+                    height=80,
+                    readonly=not editable
+                )
+            elif field_key == 'TRANSCODE':
+                # Dropdown for transaction code
+                spinner = Spinner(
+                    text=value if value else 'Withdrawal',
+                    values=['Withdrawal', 'Deposit', 'Transfer'],
+                    size_hint_y=None,
+                    height=40,
+                    disabled=not editable
+                )
+                self.input_fields[field_key] = spinner
+                form_layout.add_widget(spinner)
+                continue
+            elif field_key == 'STATUS':
+                # Dropdown for status
+                spinner = Spinner(
+                    text=value if value else 'None',
+                    values=['None', 'Reconciled', 'Void', 'Follow up', 'Duplicate'],
+                    size_hint_y=None,
+                    height=40,
+                    disabled=not editable
+                )
+                self.input_fields[field_key] = spinner
+                form_layout.add_widget(spinner)
+                continue
+            else:
+                # Regular text input
+                text_input = TextInput(
+                    text=value,
+                    multiline=False,
+                    size_hint_y=None,
+                    height=40,
+                    readonly=not editable
+                )
+            
+            self.input_fields[field_key] = text_input
+            form_layout.add_widget(text_input)
+        
+        scroll.add_widget(form_layout)
+        main_layout.add_widget(scroll)
+        
+        # Add button layout
+        button_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, spacing=10)
+        
+        # Save button
+        save_btn = Button(text='Save Changes', size_hint_x=0.3)
+        save_btn.bind(on_press=self._on_save)
+        button_layout.add_widget(save_btn)
+        
+        # Delete button
+        delete_btn = Button(text='Delete', size_hint_x=0.3)
+        delete_btn.bind(on_press=self._on_delete)
+        button_layout.add_widget(delete_btn)
+        
+        # Cancel button
+        cancel_btn = Button(text='Cancel', size_hint_x=0.3)
+        cancel_btn.bind(on_press=self._on_cancel)
+        button_layout.add_widget(cancel_btn)
+        
+        main_layout.add_widget(button_layout)
+        
+        return main_layout
+    
+    def _on_save(self, instance):
+        """Handle save button press."""
+        # Collect updated data from input fields
+        updated_data = self.transaction_data.copy()
+        
+        for field_key, widget in self.input_fields.items():
+            if hasattr(widget, 'text'):
+                updated_data[field_key] = widget.text
+            elif hasattr(widget, 'text') and isinstance(widget, Spinner):
+                updated_data[field_key] = widget.text
+        
+        # Validate required fields
+        if not updated_data.get('TRANSDATE'):
+            show_popup('Validation Error', 'Transaction date is required.')
+            return
+            
+        if not updated_data.get('TRANSAMOUNT'):
+            show_popup('Validation Error', 'Transaction amount is required.')
+            return
+        
+        # Try to convert amount to float
+        try:
+            amount_str = updated_data.get('TRANSAMOUNT', '0')
+            if isinstance(amount_str, str):
+                # Remove currency symbols and convert
+                amount_str = amount_str.replace('$', '').replace(',', '')
+            float(amount_str)
+            updated_data['TRANSAMOUNT'] = amount_str
+        except ValueError:
+            show_popup('Validation Error', 'Invalid amount format.')
+            return
+        
+        # Call save callback if provided
+        if self.on_save_callback:
+            self.on_save_callback(updated_data)
+        
+        self.popup.dismiss()
+    
+    def _on_delete(self, instance):
+        """Handle delete button press."""
+        # Show confirmation dialog
+        def confirm_delete(confirm_instance):
+            if self.on_delete_callback:
+                self.on_delete_callback(self.transaction_data)
+            confirm_popup.dismiss()
+            self.popup.dismiss()
+        
+        def cancel_delete(cancel_instance):
+            confirm_popup.dismiss()
+        
+        confirm_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        confirm_layout.add_widget(Label(text='Are you sure you want to delete this transaction?'))
+        
+        button_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, spacing=10)
+        
+        yes_btn = Button(text='Yes, Delete')
+        yes_btn.bind(on_press=confirm_delete)
+        button_layout.add_widget(yes_btn)
+        
+        no_btn = Button(text='Cancel')
+        no_btn.bind(on_press=cancel_delete)
+        button_layout.add_widget(no_btn)
+        
+        confirm_layout.add_widget(button_layout)
+        
+        confirm_popup = Popup(
+            title='Confirm Delete',
+            content=confirm_layout,
+            size_hint=(0.6, 0.4),
+            auto_dismiss=False
+        )
+        confirm_popup.open()
+    
+    def _on_cancel(self, instance):
+        """Handle cancel button press."""
+        self.popup.dismiss() = (label.width, None)
             
             label.bind(width=update_text_size)
             

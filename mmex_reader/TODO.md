@@ -13,7 +13,7 @@ After reviewing your MMEX Kivy application code, here are several improvement su
    using size_hint properties more effectively.
 - [x] Date Picker Widget : Replace text inputs for dates with a proper date picker 
    widget for better user experience.
-- [ ] Transaction Details View : Add ability to click on a transaction to see more 
+- [x] Transaction Details View : Add ability to click on a transaction to see more 
    details or edit it.
 
 ## Performance Improvements
