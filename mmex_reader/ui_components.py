@@ -815,14 +815,4 @@ class TransactionDetailsPopup:
     def _on_cancel(self, instance):
         """Handle cancel button press."""
         self.popup.dismiss()
-            
-        grid.add_widget(label)
-        
-    # Bind size to update text_size
-    def update_text_size(label, *args):
-        label.text_size = (label.width, None)
-    
-    label.bind(width=update_text_size)
-    
-    grid.add_widget(label)
         
