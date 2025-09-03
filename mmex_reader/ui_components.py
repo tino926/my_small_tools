@@ -637,23 +637,26 @@ class TransactionDetailsPopup:
         form_layout = GridLayout(cols=2, spacing=10, size_hint_y=None, padding=10)
         form_layout.bind(minimum_height=form_layout.setter('height'))
         
-        # Define field configurations
+        # Define field configurations with their types
         field_configs = [
-            ('Transaction ID', 'TRANSID', False),  # Read-only
-            ('Date', 'TRANSDATE', True),
-            ('Account', 'ACCOUNTNAME', False),  # Read-only for now
-            ('Payee', 'PAYEENAME', True),
-            ('Category', 'CATEGNAME', True),
-            ('Amount', 'TRANSAMOUNT', True),
-            ('Transaction Code', 'TRANSCODE', True),
-            ('Notes', 'NOTES', True),
-            ('Tags', 'TAGNAMES', True),
-            ('Status', 'STATUS', True),
-            ('Follow Up', 'FOLLOWUPID', True)
+            ('Transaction ID', 'TRANSID', False, 'text'),  # Read-only
+            ('Date', 'TRANSDATE', True, 'text'),
+            ('Account', 'ACCOUNTNAME', False, 'text'),  # Read-only for now
+            ('Payee', 'PAYEENAME', True, 'text'),
+            ('Category', 'CATEGNAME', True, 'text'),
+            ('Amount', 'TRANSAMOUNT', True, 'text'),
+            ('Transaction Code', 'TRANSCODE', True, 'dropdown', ['Withdrawal', 'Deposit', 'Transfer']),
+            ('Notes', 'NOTES', True, 'multiline'),
+            ('Tags', 'TAGNAMES', True, 'text'),
+            ('Status', 'STATUS', True, 'dropdown', ['None', 'Reconciled', 'Void', 'Follow up', 'Duplicate']),
+            ('Follow Up', 'FOLLOWUPID', True, 'text')
         ]
         
         # Create form fields
-        for label_text, field_key, editable in field_configs:
+        for field_config in field_configs:
+            label_text, field_key, editable = field_config[0:3]
+            field_type = field_config[3]
+            
             # Add label
             label = Label(
                 text=f"{label_text}:",
@@ -665,45 +668,29 @@ class TransactionDetailsPopup:
             label.bind(size=label.setter('text_size'))
             form_layout.add_widget(label)
             
-            # Add input field
+            # Get field value
             value = str(self.transaction_data.get(field_key, '')) if self.transaction_data.get(field_key) is not None else ''
             
-            if field_key == 'NOTES':
-                # Multi-line text input for notes
-                text_input = TextInput(
+            # Create appropriate input widget based on field type
+            if field_type == 'multiline':
+                widget = TextInput(
                     text=value,
                     multiline=True,
                     size_hint_y=None,
                     height=80,
                     readonly=not editable
                 )
-            elif field_key == 'TRANSCODE':
-                # Dropdown for transaction code
-                spinner = Spinner(
-                    text=value if value else 'Withdrawal',
-                    values=['Withdrawal', 'Deposit', 'Transfer'],
+            elif field_type == 'dropdown':
+                values = field_config[4]
+                widget = Spinner(
+                    text=value if value else values[0],
+                    values=values,
                     size_hint_y=None,
                     height=40,
                     disabled=not editable
                 )
-                self.input_fields[field_key] = spinner
-                form_layout.add_widget(spinner)
-                continue
-            elif field_key == 'STATUS':
-                # Dropdown for status
-                spinner = Spinner(
-                    text=value if value else 'None',
-                    values=['None', 'Reconciled', 'Void', 'Follow up', 'Duplicate'],
-                    size_hint_y=None,
-                    height=40,
-                    disabled=not editable
-                )
-                self.input_fields[field_key] = spinner
-                form_layout.add_widget(spinner)
-                continue
-            else:
-                # Regular text input
-                text_input = TextInput(
+            else:  # Default to text input
+                widget = TextInput(
                     text=value,
                     multiline=False,
                     size_hint_y=None,
@@ -711,8 +698,8 @@ class TransactionDetailsPopup:
                     readonly=not editable
                 )
             
-            self.input_fields[field_key] = text_input
-            form_layout.add_widget(text_input)
+            self.input_fields[field_key] = widget
+            form_layout.add_widget(widget)
         
         scroll.add_widget(form_layout)
         main_layout.add_widget(scroll)
