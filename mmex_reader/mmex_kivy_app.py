@@ -697,30 +697,6 @@ class MMEXKivyApp(App):
         Window.minimum_width, Window.minimum_height = 800, 600
         Window.bind(on_resize=self._on_window_resize)
 
-    def on_transaction_row_click(self, transaction_data):
-        """Handle transaction row click to show details popup.
-        
-        Args:
-            transaction_data: Dictionary containing transaction information
-        """
-        def on_save_transaction(updated_data):
-            """Handle saving updated transaction data."""
-            # TODO: Implement database update functionality
-            show_popup('Save Transaction', 'Transaction save functionality will be implemented in a future update.')
-            
-        def on_delete_transaction(transaction_data):
-            """Handle deleting transaction."""
-            # TODO: Implement database delete functionality
-            show_popup('Delete Transaction', 'Transaction delete functionality will be implemented in a future update.')
-        
-        # Create and show transaction details popup
-        details_popup = TransactionDetailsPopup(
-            transaction_data=transaction_data,
-            on_save_callback=on_save_transaction,
-            on_delete_callback=on_delete_transaction
-        )
-        details_popup.show()
-
     def _configure_fonts(self):
         """Configure global font settings."""
         Builder.load_string(f"""
