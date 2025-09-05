@@ -207,18 +207,22 @@ class DatePickerButton(Button):
         
     def _open_date_picker(self, instance):
         """Open the date picker popup."""
+        # Create date picker widget
         date_picker = DatePickerWidget(
             initial_date=self.current_date,
             callback=self._on_date_selected
         )
         
-        self.popup = Popup(
+        # Create and show popup
+        self.popup = create_popup(
             title='Select Date',
-            content=date_picker,
+            content_widget=date_picker,
             size_hint=(None, None),
-            size=(320, 400),
             auto_dismiss=True
         )
+        
+        # Override size for date picker popup
+        self.popup.size = (320, 400)
         self.popup.open()
         
     def _on_date_selected(self, selected_date):
@@ -357,26 +361,72 @@ class AccountTabContent(BoxLayout):
         """Update the displayed balance."""
         self.balance_label.text = f"Balance: ${balance:.2f}"
 
+def create_popup(title, content_widget=None, buttons=None, size_hint=(0.8, 0.4), auto_dismiss=True):
+    """Create a popup with customizable content and buttons.
+    
+    Args:
+        title: The popup title
+        content_widget: Widget to display in the popup (if None, an empty BoxLayout is used)
+        buttons: List of dictionaries with button configurations, each containing:
+                - text: Button text
+                - callback: Function to call when button is pressed
+                - size_hint_x: Horizontal size hint (default: 1)
+        size_hint: Size hint for the popup (default: (0.8, 0.4))
+        auto_dismiss: Whether the popup can be dismissed by clicking outside (default: True)
+        
+    Returns:
+        The created Popup instance
+    """
+    # Create main content layout
+    main_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+    
+    # Add content widget if provided
+    if content_widget:
+        main_layout.add_widget(content_widget)
+    
+    # Add buttons if provided
+    if buttons:
+        button_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, spacing=10)
+        
+        for btn_config in buttons:
+            btn = Button(
+                text=btn_config['text'],
+                size_hint_x=btn_config.get('size_hint_x', 1)
+            )
+            if 'callback' in btn_config:
+                btn.bind(on_press=btn_config['callback'])
+            button_layout.add_widget(btn)
+            
+        main_layout.add_widget(button_layout)
+    
+    # Create and return popup
+    popup = Popup(
+        title=title,
+        content=main_layout,
+        size_hint=size_hint,
+        auto_dismiss=auto_dismiss
+    )
+    
+    return popup
+
 def show_popup(title, message):
-    """Show a popup with the given title and message.
+    """Show a simple popup with the given title and message.
     
     Args:
         title: The popup title
         message: The message to display
     """
-    content = BoxLayout(orientation='vertical', padding=10, spacing=10)
-    content.add_widget(Label(text=message))
+    # Create message label
+    content = Label(text=message)
     
-    # Add OK button
-    btn = Button(text="OK", size_hint=(1, 0.2))
-    content.add_widget(btn)
+    # Configure OK button
+    buttons = [{
+        'text': 'OK',
+        'callback': lambda instance: popup.dismiss()
+    }]
     
-    # Create popup
-    popup = Popup(title=title, content=content, size_hint=(0.8, 0.4))
-    
-    # Bind button to close popup
-    btn.bind(on_release=popup.dismiss)
-    
+    # Create and show popup
+    popup = create_popup(title, content, buttons)
     popup.open()
 
 class SortableHeaderButton(Button):
@@ -766,34 +816,35 @@ class TransactionDetailsPopup:
     
     def _on_delete(self, instance):
         """Handle delete button press."""
-        # Show confirmation dialog
-        def confirm_delete(confirm_instance):
+        # Create confirmation message
+        content = Label(text='Are you sure you want to delete this transaction?')
+        
+        # Define button callbacks
+        def confirm_delete(instance):
             if self.on_delete_callback:
                 self.on_delete_callback(self.transaction_data)
             confirm_popup.dismiss()
             self.popup.dismiss()
         
-        def cancel_delete(cancel_instance):
-            confirm_popup.dismiss()
+        # Configure buttons
+        buttons = [
+            {
+                'text': 'Yes, Delete',
+                'callback': confirm_delete,
+                'size_hint_x': 0.5
+            },
+            {
+                'text': 'Cancel',
+                'callback': lambda instance: confirm_popup.dismiss(),
+                'size_hint_x': 0.5
+            }
+        ]
         
-        confirm_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
-        confirm_layout.add_widget(Label(text='Are you sure you want to delete this transaction?'))
-        
-        button_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, spacing=10)
-        
-        yes_btn = Button(text='Yes, Delete')
-        yes_btn.bind(on_press=confirm_delete)
-        button_layout.add_widget(yes_btn)
-        
-        no_btn = Button(text='Cancel')
-        no_btn.bind(on_press=cancel_delete)
-        button_layout.add_widget(no_btn)
-        
-        confirm_layout.add_widget(button_layout)
-        
-        confirm_popup = Popup(
+        # Create and show confirmation popup
+        confirm_popup = create_popup(
             title='Confirm Delete',
-            content=confirm_layout,
+            content_widget=content,
+            buttons=buttons,
             size_hint=(0.6, 0.4),
             auto_dismiss=False
         )
