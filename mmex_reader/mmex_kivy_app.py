@@ -664,6 +664,46 @@ class MMEXAppLayout(BoxLayout):
         self.filter_button.text = "All Fields"
         self.filtered_transactions_df = self.all_transactions_df
         self.on_tab_switch(None, self.tab_panel.current_tab)
+        
+    def on_transaction_row_click(self, transaction_data):
+        """Handle click on a transaction row.
+        
+        Args:
+            transaction_data: Dictionary containing transaction information
+        """
+        # Create and show transaction details popup
+        details_popup = TransactionDetailsPopup(
+            transaction_data,
+            on_save_callback=self._on_transaction_save,
+            on_delete_callback=self._on_transaction_delete
+        )
+        details_popup.show()
+    
+    def _on_transaction_save(self, updated_data):
+        """Handle saving updated transaction data.
+        
+        Args:
+            updated_data: Dictionary containing updated transaction information
+        """
+        # For now, just show a confirmation popup
+        # In a future implementation, this would update the database
+        show_popup("Transaction Updated", "Transaction details have been updated.")
+        
+        # Refresh the transaction list
+        self.run_global_query()
+    
+    def _on_transaction_delete(self, transaction_data):
+        """Handle deleting a transaction.
+        
+        Args:
+            transaction_data: Dictionary containing transaction information to delete
+        """
+        # For now, just show a confirmation popup
+        # In a future implementation, this would delete from the database
+        show_popup("Transaction Deleted", "Transaction has been deleted.")
+        
+        # Refresh the transaction list
+        self.run_global_query()
 
     def update_visualization(self):
         """Update the visualization based on the selected chart type."""
