@@ -1,8 +1,8 @@
-import sqlite3
 import pandas as pd
 import os
 from dotenv import load_dotenv
 from datetime import datetime  # Import datetime
+from db_utils import _connection_pool, load_db_path
 
 # get the directory of the current script
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -38,12 +38,18 @@ if not db_file:
     exit()
 
 try:
-    # Establish connection to the database
+    # Initialize the connection pool with the database file
     # Note: If the .mmb file is encrypted (.emb), connecting directly with
     # sqlite3 will fail.
     # This is because the sqlite3 module does not support AES encryption. You
     # need to decrypt it first in MMEX or use other tools.
-    conn = sqlite3.connect(db_file)
+    load_db_path(db_file)
+    
+    # Get a connection from the pool
+    conn = _connection_pool.get_connection()
+    if not conn:
+        print("Error: Could not get a database connection from the pool.")
+        exit()
     cursor = conn.cursor()
 
     print(f"Successfully connected to {db_file}")
@@ -125,17 +131,16 @@ try:
 
     except pd.io.sql.DatabaseError as e:
         print(f"Error reading transaction records for the specified date range: {e}")
-    except sqlite3.OperationalError as e:
+    except Exception as e:
         print(
-            f"SQL error when querying transaction records for the specified date range: {e}. Please check SQL syntax and table/column names."
+            f"Error when querying transaction records for the specified date range: {e}. Please check SQL syntax and table/column names."
         )
     # --- ADDED: Read, filter, and print income/expense records for the specified date range by time series --- End
 
-except sqlite3.Error as e:
+except Exception as e:
     print(f"Error connecting to database: {e}")
-
 finally:
-    # Ensure connection is closed
-    if "conn" in locals() and conn:
-        conn.close()
-        print(f"\nConnection to {db_file} has been closed.")
+    # Release the connection back to the pool
+    if 'conn' in locals() and conn:
+        _connection_pool.release_connection(conn)
+        print(f"\nConnection to {db_file} has been released back to the pool.")
