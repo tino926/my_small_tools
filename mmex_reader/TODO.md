@@ -15,10 +15,9 @@ After reviewing your MMEX Kivy application code, here are several improvement su
    widget for better user experience.
 - [x] Transaction Details View : Add ability to click on a transaction to see more 
    details or edit it.
-
 ## Performance Improvements
 
-- [ ] Connection Pooling : Implement database connection pooling instead of opening/closing connections for each query.
+- [x] Connection Pooling : Implement database connection pooling instead of opening/closing connections for each query. ✅ **COMPLETED** - Connection pooling has been implemented across all database utility functions and scripts.
 - [ ] Pagination : Add pagination for large result sets instead of loading all transactions at once.
 - [ ] Asynchronous Loading : Use threading or async operations for database queries to prevent UI freezing.
 - [ ] Caching : Cache frequently accessed data like account lists and recent transactions.
