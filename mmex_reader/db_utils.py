@@ -12,6 +12,7 @@ import pandas as pd
 from dotenv import load_dotenv
 import threading
 from typing import Dict, Optional, Tuple, Any
+from error_handling import handle_database_query, validate_date_format, validate_date_range
 
 # MMEX database schema constants
 CHECKING_ACCOUNT_TYPE = "'Checking Account'"
@@ -203,13 +204,9 @@ def get_all_accounts(db_path):
         WHERE STATUS = 'Open'
         ORDER BY ACCOUNTNAME
         """
-        accounts_df = pd.read_sql_query(query, conn)
-        return None, accounts_df
+        error, accounts_df = handle_database_query(conn, query)
+        return error, accounts_df
 
-    except sqlite3.Error as e:
-        return f"Database error: {e}", pd.DataFrame()
-    except Exception as e:
-        return f"Unexpected error: {e}", pd.DataFrame()
     finally:
         # Release the connection back to the pool
         if conn:
@@ -292,19 +289,19 @@ def get_transactions(db_path, start_date_str=None, end_date_str=None, account_id
     end_date = None
 
     if start_date_str:
-        try:
-            start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
-        except ValueError:
-            return f"Invalid start date format: {start_date_str}", pd.DataFrame()
+        error, start_date = validate_date_format(start_date_str, "start_date_str")
+        if error:
+            return error, pd.DataFrame()
 
     if end_date_str:
-        try:
-            end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
-        except ValueError:
-            return f"Invalid end date format: {end_date_str}", pd.DataFrame()
+        error, end_date = validate_date_format(end_date_str, "end_date_str")
+        if error:
+            return error, pd.DataFrame()
 
-    if start_date and end_date and start_date > end_date:
-        return "Start date cannot be after end date", pd.DataFrame()
+    if start_date and end_date:
+        error = validate_date_range(start_date_str, end_date_str)
+        if error:
+            return error, pd.DataFrame()
 
     conn = None
     try:
@@ -345,31 +342,45 @@ def get_transactions(db_path, start_date_str=None, end_date_str=None, account_id
         query += " ORDER BY t.TRANSDATE DESC"
 
         # Execute query
-        transactions_df = pd.read_sql_query(query, conn, params=params)
+        error, transactions_df = handle_database_query(conn, query, params)
+        if error:
+            return error, pd.DataFrame()
 
-        # Add tags column
-        transactions_df["TAGS"] = ""
-
-        # Get tags for each transaction
-        for idx, row in transactions_df.iterrows():
+        # Optimize tag retrieval with a single query instead of N+1 queries
+        if not transactions_df.empty:
+            # Get all tags for all transactions in one query
+            transaction_ids = transactions_df['TRANSID'].tolist()
+            placeholders = ','.join(['?' for _ in transaction_ids])
+            
             tag_query = f"""
-            SELECT t.TAGNAME 
+            SELECT tl.REFID as TRANSID, t.TAGNAME
             FROM {TAG_TABLE} t
             JOIN {TAGLINK_TABLE} tl ON t.TAGID = tl.TAGID
-            WHERE tl.REFID = ? AND tl.REFTYPE = 'Transaction'
+            WHERE tl.REFID IN ({placeholders}) AND tl.REFTYPE = 'Transaction'
+            ORDER BY tl.REFID, t.TAGNAME
             """
-            tags_df = pd.read_sql_query(tag_query, conn, params=[row["TRANSID"]])
-            if not tags_df.empty:
-                transactions_df.at[idx, "TAGS"] = ", ".join(
-                    tags_df["TAGNAME"].tolist()
-                )
+            
+            tag_error, tags_df = handle_database_query(conn, tag_query, transaction_ids)
+            
+            # Create a dictionary mapping transaction IDs to their tags
+            tags_dict = {}
+            if not tag_error and not tags_df.empty:
+                for _, tag_row in tags_df.iterrows():
+                    trans_id = tag_row['TRANSID']
+                    tag_name = tag_row['TAGNAME']
+                    if trans_id not in tags_dict:
+                        tags_dict[trans_id] = []
+                    tags_dict[trans_id].append(tag_name)
+            
+            # Add tags column and populate it efficiently
+            transactions_df['TAGS'] = transactions_df['TRANSID'].apply(
+                lambda trans_id: ', '.join(tags_dict.get(trans_id, []))
+            )
+        else:
+            transactions_df['TAGS'] = ''
 
         return None, transactions_df
 
-    except sqlite3.Error as e:
-        return f"Database error: {e}", pd.DataFrame()
-    except Exception as e:
-        return f"Unexpected error: {e}", pd.DataFrame()
     finally:
         # Release the connection back to the pool
         if conn:
@@ -401,42 +412,41 @@ def calculate_balance_for_account(db_path, account_id, date=None):
         if not conn:
             return "Could not get a database connection from the pool", None
             
-        # Get account initial balance
-        query = f"SELECT INITIALBAL FROM {ACCOUNT_TABLE} WHERE ACCOUNTID = ?"
-        cursor = conn.cursor()
-        cursor.execute(query, (account_id,))
-        result = cursor.fetchone()
-
-        if not result:
-            return f"Account with ID {account_id} not found", None
-
-        initial_balance = result[0] or 0
-
-        # Get all transactions for this account up to the specified date
+        # Optimize balance calculation using SQL aggregation instead of Python loops
+        # Get account initial balance and calculate transaction totals in one query
         query = f"""
-        SELECT TRANSCODE, TRANSAMOUNT 
-        FROM {TRANSACTION_TABLE} 
-        WHERE ACCOUNTID = ? AND DELETEDTIME = ''
+        SELECT 
+            a.INITIALBAL,
+            COALESCE(SUM(CASE WHEN t.TRANSCODE = 'Deposit' THEN t.TRANSAMOUNT ELSE 0 END), 0) as total_deposits,
+            COALESCE(SUM(CASE WHEN t.TRANSCODE = 'Withdrawal' THEN t.TRANSAMOUNT ELSE 0 END), 0) as total_withdrawals
+        FROM {ACCOUNT_TABLE} a
+        LEFT JOIN {TRANSACTION_TABLE} t ON a.ACCOUNTID = t.ACCOUNTID 
+            AND t.DELETEDTIME = ''
         """
-
+        
         params = [account_id]
-
+        
         if date:
-            query += " AND TRANSDATE <= ?"
+            query += " AND t.TRANSDATE <= ?"
             params.append(date.strftime("%Y-%m-%d"))
-
-        cursor.execute(query, params)
-        transactions = cursor.fetchall()
-
-        # Calculate balance
-        balance = initial_balance
-        for trans_type, amount in transactions:
-            if trans_type == "Withdrawal":
-                balance -= amount
-            elif trans_type == "Deposit":
-                balance += amount
-            # Handle transfers if needed
-
+            
+        query += " WHERE a.ACCOUNTID = ? GROUP BY a.ACCOUNTID, a.INITIALBAL"
+        params.append(account_id)
+        
+        error, result_df = handle_database_query(conn, query, params)
+        
+        if error:
+            return error, None
+            
+        if result_df.empty:
+            return f"Account with ID {account_id} not found", None
+            
+        row = result_df.iloc[0]
+        initial_balance = row['INITIALBAL'] or 0
+        total_deposits = row['total_deposits'] or 0
+        total_withdrawals = row['total_withdrawals'] or 0
+        
+        balance = initial_balance + total_deposits - total_withdrawals
         return None, balance
     except sqlite3.Error as e:
         return f"Database error: {e}", None
