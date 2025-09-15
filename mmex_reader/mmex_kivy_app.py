@@ -24,7 +24,7 @@ kivy.require("2.1.0")
 from kivy.app import App
 from kivy.core.window import Window
 from kivy.lang import Builder
-from kivy.properties import ObjectProperty, StringProperty
+# Removed unused imports: ObjectProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.gridlayout import GridLayout
@@ -33,7 +33,7 @@ from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.tabbedpanel import TabbedPanel, TabbedPanelHeader
 from kivy.uix.textinput import TextInput
-from kivy.uix.widget import Widget
+# Removed unused import: Widget
 
 # Local module imports
 from db_utils import (
@@ -253,16 +253,16 @@ class MMEXAppLayout(BoxLayout):
                     content.results_label.text = f"{len(account_transactions)} transactions found"
 
                     # Update balance
-                    self._update_account_balance(account_id, account_info, content)
+                    self._update_account_balance(account_id, content, account_info)
                 break
     
-    def _update_account_balance(self, account_id, account_info, content):
+    def _update_account_balance(self, account_id, content, account_info=None):
         """Update account balance display.
         
         Args:
             account_id: Account ID
-            account_info: Account information dictionary
             content: Account tab content widget
+            account_info: Account information dictionary (optional, for backward compatibility)
         """
         try:
             if not self._validate_date(self.end_date_input.text):
@@ -280,8 +280,7 @@ class MMEXAppLayout(BoxLayout):
             else:
                 content.balance_label.text = f"Balance: ${balance:.2f}"
         except Exception as e:
-            content.balance_label.text = "Balance: Calculation error"
-            print(f"Error calculating balance for {account_info['name']}: {e}")
+            content.balance_label.text = "Balance: Error"
 
     def _create_date_inputs(self):
         """Create date input fields with responsive validation using date picker widgets."""
@@ -547,25 +546,9 @@ class MMEXAppLayout(BoxLayout):
         }
 
         # Calculate and display initial balance
-        self._update_account_balance(account_id, content, initial_balance)
+        self._update_account_balance(account_id, content)
 
-    def _update_account_balance(self, account_id, content, initial_balance):
-        """Update the balance display for an account."""
-        try:
-            end_date = self.end_date_input.text
-            error, balance = calculate_balance_for_account(
-                self.db_path,
-                account_id,
-                datetime.strptime(end_date, "%Y-%m-%d"),
-            )
 
-            if error:
-                content.balance_label.text = "Balance: Error"
-            else:
-                content.balance_label.text = f"Balance: ${balance:.2f}"
-        except Exception as e:
-            content.balance_label.text = "Balance: Error"
-            print(f"Error calculating balance: {e}")
 
     def _show_filter_options(self, instance):
         """Show filter options popup."""
@@ -618,8 +601,8 @@ class MMEXAppLayout(BoxLayout):
         else:
             self.filtered_transactions_df = self._filter_transactions(search_text, filter_type)
 
-        # Update the active tab
-        self.on_tab_switch(None, self.tab_panel.current_tab)
+        # Update only the current active tab efficiently
+        self._update_current_tab()
 
     def _filter_transactions(self, search_text, filter_type):
         """Filter transactions based on search text and filter type."""
@@ -640,6 +623,16 @@ class MMEXAppLayout(BoxLayout):
         
         return self.all_transactions_df[mask]
 
+    def _update_current_tab(self):
+        """Efficiently update only the current active tab."""
+        current_tab = self.tab_panel.current_tab
+        if current_tab.text == "All Transactions":
+            self._update_all_transactions_tab()
+        elif current_tab.text == "Charts":
+            self.update_visualization()
+        else:
+            self._update_account_tab(current_tab.text)
+
     def sort_transactions(self, column_header):
         """Sort transactions based on the selected column."""
         if self.current_sort_column == column_header:
@@ -655,15 +648,15 @@ class MMEXAppLayout(BoxLayout):
                 inplace=True
             )
 
-        # Update the active tab to refresh the view
-        self.on_tab_switch(None, self.tab_panel.current_tab)
+        # Update only the current active tab efficiently
+        self._update_current_tab()
 
     def _clear_search_filter(self, instance):
         """Clear search filter."""
         self.search_input.text = ""
         self.filter_button.text = "All Fields"
         self.filtered_transactions_df = self.all_transactions_df
-        self.on_tab_switch(None, self.tab_panel.current_tab)
+        self._update_current_tab()
         
     def on_transaction_row_click(self, transaction_data):
         """Handle click on a transaction row.
@@ -689,8 +682,7 @@ class MMEXAppLayout(BoxLayout):
         # In a future implementation, this would update the database
         show_popup("Transaction Updated", "Transaction details have been updated.")
         
-        # Refresh the transaction list
-        self.run_global_query()
+
     
     def _on_transaction_delete(self, transaction_data):
         """Handle deleting a transaction.
@@ -702,8 +694,7 @@ class MMEXAppLayout(BoxLayout):
         # In a future implementation, this would delete from the database
         show_popup("Transaction Deleted", "Transaction has been deleted.")
         
-        # Refresh the transaction list
-        self.run_global_query()
+
 
     def update_visualization(self):
         """Update the visualization based on the selected chart type."""
