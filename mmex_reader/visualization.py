@@ -85,8 +85,8 @@ class VisualizationTab(BoxLayout):
             
             self.chart_layout.clear_widgets()
             self.chart_layout.add_widget(chart)
-        except Exception as e:
-            self.show_chart_error(f"Error generating chart: {str(e)}")
+        except Exception as chart_error:
+            self.show_chart_error(f"Error generating chart: {str(chart_error)}")
 
     def show_chart(self, transactions_df):
         """Display the current chart with transaction data."""
@@ -109,11 +109,11 @@ class VisualizationTab(BoxLayout):
                 size_hint=(1, None),
                 height=40
             )
-            btn.bind(on_press=lambda x, ct=chart_type: self.set_chart_type(ct))
+            btn.bind(on_press=lambda button_instance, chart_type_name=chart_type: self.set_chart_type(chart_type_name))
             popup_layout.add_widget(btn)
         
         close_btn = Button(text="Close", size_hint=(1, None), height=40)
-        close_btn.bind(on_press=lambda x: self.popup.dismiss())
+        close_btn.bind(on_press=lambda button_instance: self.popup.dismiss())
         popup_layout.add_widget(close_btn)
         
         self.popup = Popup(
@@ -185,8 +185,8 @@ def create_spending_by_category_chart(transactions_df):
         canvas = FigureCanvasKivyAgg(fig)
         return canvas
         
-    except Exception as e:
-        return Label(text=f"Error creating chart: {str(e)}")
+    except Exception as chart_creation_error:
+            return Label(text=f"Error creating chart: {str(chart_creation_error)}")
 
 def create_spending_over_time_chart(transactions_df):
     """Create a line chart showing spending over time.
@@ -243,8 +243,8 @@ def create_spending_over_time_chart(transactions_df):
         canvas = FigureCanvasKivyAgg(fig)
         return canvas
         
-    except Exception as e:
-        return Label(text=f"Error creating chart: {str(e)}")
+    except Exception as chart_creation_error:
+            return Label(text=f"Error creating chart: {str(chart_creation_error)}")
 
 def create_income_vs_expenses_chart(transactions_df):
     """Create a bar chart comparing income and expenses.
@@ -288,8 +288,8 @@ def create_income_vs_expenses_chart(transactions_df):
         canvas = FigureCanvasKivyAgg(fig)
         return canvas
         
-    except Exception as e:
-        return Label(text=f"Error creating chart: {str(e)}")
+    except Exception as chart_creation_error:
+            return Label(text=f"Error creating chart: {str(chart_creation_error)}")
 
 def create_top_payees_chart(transactions_df):
     """Create a bar chart showing top payees.
@@ -336,9 +336,9 @@ def create_top_payees_chart(transactions_df):
         ax.set_xticklabels(top_payees['PAYEE'], rotation=45, ha='right')
         
         # Add value labels on bars
-        for i, (bar, amount) in enumerate(zip(bars, top_payees['TRANSAMOUNT'])):
-            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1,
-                   f'${amount:,.0f}', ha='center', va='bottom')
+        for bar_index, (bar_rect, transaction_amount) in enumerate(zip(bars, top_payees['TRANSAMOUNT'])):
+            ax.text(bar_rect.get_x() + bar_rect.get_width()/2, bar_rect.get_height() + 0.1,
+                f'${transaction_amount:,.0f}', ha='center', va='bottom')
         
         # Create canvas
         canvas = FigureCanvasKivyAgg(fig)
