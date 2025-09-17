@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime  # Import datetime
 from db_utils import _connection_pool, load_db_path
+from error_handling import handle_database_query
 
 # get the directory of the current script
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -113,9 +114,11 @@ try:
             ORDER BY CHECKINGACCOUNT_V1.TRANSDATE ASC, CHECKINGACCOUNT_V1.TRANSID ASC;
         """
 
-        dated_transactions_df = pd.read_sql_query(query_transactions_by_date, conn)
-
-        if not dated_transactions_df.empty:
+        error, dated_transactions_df = handle_database_query(conn, query_transactions_by_date)
+        
+        if error:
+            print(f"Error reading transaction records for the specified date range: {error}")
+        elif not dated_transactions_df.empty:
             print(
                 f"Found {len(dated_transactions_df)} records between {START_DATE_STR} and {END_DATE_STR}:"
             )
@@ -129,8 +132,6 @@ try:
                 f"No income/expense records found between {START_DATE_STR} and {END_DATE_STR}."
             )
 
-    except pd.io.sql.DatabaseError as e:
-        print(f"Error reading transaction records for the specified date range: {e}")
     except Exception as e:
         print(
             f"Error when querying transaction records for the specified date range: {e}. Please check SQL syntax and table/column names."
