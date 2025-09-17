@@ -416,17 +416,12 @@ def show_popup(title, message):
         title: The popup title
         message: The message to display
     """
-    # Create message label
-    content = Label(text=message)
-    
-    # Configure OK button
-    buttons = [{
-        'text': 'OK',
-        'callback': lambda instance: popup.dismiss()
-    }]
-    
-    # Create and show popup
-    popup = create_popup(title, content, buttons)
+    # Use the more flexible create_popup function
+    popup = create_popup(
+        title=title,
+        content_widget=Label(text=message),
+        buttons=[{'text': 'OK', 'callback': lambda instance: popup.dismiss()}]
+    )
     popup.open()
 
 class SortableHeaderButton(Button):
@@ -460,64 +455,72 @@ class SortableHeaderButton(Button):
         # Call the sort callback
         self.sort_callback(self.column_name, self.sort_ascending)
 
-def create_header_label(text):
-    """Create a styled header label.
+def create_styled_label(text, label_type='data', num_columns=1, **kwargs):
+    """Create a styled label with flexible configuration.
     
     Args:
         text: The label text
+        label_type: 'header' or 'data' to determine styling
+        num_columns: Number of columns for width calculation (data labels only)
+        **kwargs: Additional Label properties to override defaults
         
     Returns:
         A styled Label widget
     """
-    label = Label(
-        text=text,
-        size_hint_y=None,
-        height=40,
-        bold=True,
-        color=(1, 1, 1, 1)  # White text
-    )
-    
-    # Add background color
-    with label.canvas.before:
-        Color(*HEADER_COLOR)
-        label.rect = Rectangle(pos=label.pos, size=label.size)
-    
-    # Update rectangle position and size when the label changes
-    def update_rect(instance, value):
-        instance.rect.pos = instance.pos
-        instance.rect.size = instance.size
-    
-    label.bind(pos=update_rect, size=update_rect)
+    if label_type == 'header':
+        defaults = {
+            'text': text,
+            'size_hint_y': None,
+            'height': 40,
+            'bold': True,
+            'color': (1, 1, 1, 1)  # White text
+        }
+        defaults.update(kwargs)
+        label = Label(**defaults)
+        
+        # Add background color
+        with label.canvas.before:
+            Color(*HEADER_COLOR)
+            label.rect = Rectangle(pos=label.pos, size=label.size)
+        
+        # Update rectangle position and size when the label changes
+        def update_rect(instance, value):
+            instance.rect.pos = instance.pos
+            instance.rect.size = instance.size
+        
+        label.bind(pos=update_rect, size=update_rect)
+        
+    else:  # data label
+        defaults = {
+            'text': text,
+            'size_hint_y': None,
+            'height': 30,
+            'size_hint_x': 1/num_columns,
+            'text_size': (None, 30),
+            'halign': 'left',
+            'valign': 'middle',
+            'shorten': True,
+            'shorten_from': 'right'
+        }
+        defaults.update(kwargs)
+        label = Label(**defaults)
+        
+        # Bind size to update text_size
+        def update_text_size(instance, value):
+            instance.text_size = (value, 30)
+        
+        label.bind(width=update_text_size)
     
     return label
 
+# Backward compatibility functions
+def create_header_label(text):
+    """Create a styled header label (deprecated - use create_styled_label)."""
+    return create_styled_label(text, 'header')
+
 def _create_data_label(text, num_columns):
-    """Create a data label with proper formatting and binding.
-    
-    Args:
-        text: The text to display
-        num_columns: Number of columns for width calculation
-        
-    Returns:
-        Configured Label widget
-    """
-    label = Label(
-        text=text,
-        size_hint_y=None,
-        height=30,
-        size_hint_x=1/num_columns,
-        text_size=(None, 30),
-        halign='left',
-        valign='middle',
-        shorten=True,
-        shorten_from='right'
-    )
-    
-    # Bind size to update text_size
-    def update_text_size(instance, value):
-        instance.text_size = (value, 30)
-    
-    label.bind(width=update_text_size)
+    """Create a data label (deprecated - use create_styled_label)."""
+    return create_styled_label(text, 'data', num_columns)
     return label
 
 def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None, row_click_callback=None):
