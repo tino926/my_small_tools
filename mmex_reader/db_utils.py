@@ -3,192 +3,371 @@
 This module provides functions for interacting with the MMEX SQLite database,
 including loading the database path, retrieving accounts and transactions,
 and calculating account balances. Implements connection pooling for better performance.
+
+Classes:
+    ConnectionPool: Singleton connection pool for SQLite database connections.
+
+Functions:
+    load_db_path: Load database path from environment and initialize connection pool.
+    get_all_accounts: Retrieve all active accounts from the database.
+    get_account_by_id: Retrieve specific account details by ID.
+    get_transactions: Retrieve transactions with optional filtering.
+    calculate_balance_for_account: Calculate account balance up to a specific date.
+
+Constants:
+    Various MMEX database schema constants for table and field names.
 """
 
+import logging
 import os
 import sqlite3
+import threading
 from datetime import datetime
+from typing import Dict, Optional, Tuple, Any, Union
+
 import pandas as pd
 from dotenv import load_dotenv
-import threading
-from typing import Dict, Optional, Tuple, Any
+
 from error_handling import handle_database_query, validate_date_format, validate_date_range
 
-# MMEX database schema constants
-CHECKING_ACCOUNT_TYPE = "'Checking Account'"
-TERMDEPOSIT_ACCOUNT_TYPE = "'Term Deposit'"
-INVESTMENT_ACCOUNT_TYPE = "'Investment Account'"
-STOCK_ACCOUNT_TYPE = "'Stock'"
-MONEY_ACCOUNT_TYPE = "'Money'"
-CREDIT_CARD_ACCOUNT_TYPE = "'Credit Card'"
-LOAN_ACCOUNT_TYPE = "'Loan'"
-ASSET_ACCOUNT_TYPE = "'Asset'"
+# Configure logging
+logger = logging.getLogger(__name__)
 
-CATEGORY_TABLE = "CATEGORY_V1"
-SUBCATEGORY_TABLE = "SUBCATEGORY_V1"
-ACCOUNT_TABLE = "ACCOUNTLIST_V1"
-TRANSACTION_TABLE = "CHECKINGACCOUNT_V1"
-PAYEE_TABLE = "PAYEE_V1"
-TAG_TABLE = "TAG_V1"
-TAGLINK_TABLE = "TAGLINK_V1"
+# Configuration constants
+DB_PATH_ENV_VAR: str = "MMEX_DB_PATH"
+DEFAULT_LOG_LEVEL: str = "INFO"
 
-# Connection pool settings
-MAX_CONNECTIONS = 5
-CONNECTION_TIMEOUT = 30  # seconds
+# Connection pool configuration
+MAX_CONNECTIONS: int = 5
+CONNECTION_TIMEOUT: int = 30  # seconds
+
+# MMEX database schema constants - Table names
+CATEGORY_TABLE: str = "CATEGORY_V1"
+SUBCATEGORY_TABLE: str = "SUBCATEGORY_V1"
+ACCOUNT_TABLE: str = "ACCOUNTLIST_V1"
+TRANSACTION_TABLE: str = "CHECKINGACCOUNT_V1"
+PAYEE_TABLE: str = "PAYEE_V1"
+TAG_TABLE: str = "TAG_V1"
+TAGLINK_TABLE: str = "TAGLINK_V1"
+
+# MMEX database schema constants - Account types
+CHECKING_ACCOUNT_TYPE: str = "'Checking Account'"
+TERMDEPOSIT_ACCOUNT_TYPE: str = "'Term Deposit'"
+INVESTMENT_ACCOUNT_TYPE: str = "'Investment Account'"
+STOCK_ACCOUNT_TYPE: str = "'Stock'"
+MONEY_ACCOUNT_TYPE: str = "'Money'"
+CREDIT_CARD_ACCOUNT_TYPE: str = "'Credit Card'"
+LOAN_ACCOUNT_TYPE: str = "'Loan'"
+ASSET_ACCOUNT_TYPE: str = "'Asset'"
+
+# Database query constants
+DEFAULT_QUERY_TIMEOUT: int = 30  # seconds
+MAX_RETRY_ATTEMPTS: int = 3
+
+# Application configuration
+class DatabaseConfig:
+    """Configuration class for database-related settings.
+    
+    This class centralizes all database configuration options and provides
+    methods to load configuration from environment variables or files.
+    
+    Attributes:
+        db_path: Path to the MMEX database file.
+        max_connections: Maximum number of connections in the pool.
+        connection_timeout: Timeout for database connections in seconds.
+        query_timeout: Timeout for database queries in seconds.
+        max_retry_attempts: Maximum number of retry attempts for failed operations.
+        log_level: Logging level for database operations.
+    """
+    
+    def __init__(self):
+        """Initialize database configuration with default values."""
+        self.db_path: Optional[str] = None
+        self.max_connections: int = MAX_CONNECTIONS
+        self.connection_timeout: int = CONNECTION_TIMEOUT
+        self.query_timeout: int = DEFAULT_QUERY_TIMEOUT
+        self.max_retry_attempts: int = MAX_RETRY_ATTEMPTS
+        self.log_level: str = DEFAULT_LOG_LEVEL
+    
+    def load_from_env(self) -> None:
+        """Load configuration from environment variables."""
+        self.db_path = os.getenv(DB_PATH_ENV_VAR)
+        self.max_connections = int(os.getenv("MMEX_MAX_CONNECTIONS", MAX_CONNECTIONS))
+        self.connection_timeout = int(os.getenv("MMEX_CONNECTION_TIMEOUT", CONNECTION_TIMEOUT))
+        self.query_timeout = int(os.getenv("MMEX_QUERY_TIMEOUT", DEFAULT_QUERY_TIMEOUT))
+        self.max_retry_attempts = int(os.getenv("MMEX_MAX_RETRY_ATTEMPTS", MAX_RETRY_ATTEMPTS))
+        self.log_level = os.getenv("MMEX_LOG_LEVEL", DEFAULT_LOG_LEVEL)
+    
+    def validate(self) -> bool:
+        """Validate the current configuration.
+        
+        Returns:
+            bool: True if configuration is valid, False otherwise.
+        """
+        if not self.db_path:
+            logger.error("Database path is not configured")
+            return False
+        
+        if not os.path.exists(self.db_path):
+            logger.error(f"Database file not found: {self.db_path}")
+            return False
+        
+        if self.max_connections <= 0:
+            logger.error("Max connections must be greater than 0")
+            return False
+        
+        if self.connection_timeout <= 0:
+            logger.error("Connection timeout must be greater than 0")
+            return False
+        
+        return True
+
+# Global configuration instance
+_db_config = DatabaseConfig()
 
 
 class ConnectionPool:
-    """A simple SQLite connection pool implementation.
+    """A thread-safe SQLite connection pool implementation using the Singleton pattern.
     
     This class manages a pool of SQLite connections to improve performance
     by reusing connections instead of creating new ones for each operation.
-    """
-    _instance = None
-    _lock = threading.Lock()
     
-    def __new__(cls):
+    Attributes:
+        _instance: Singleton instance of the connection pool.
+        _lock: Thread lock for thread-safe operations.
+        _db_path: Path to the SQLite database file.
+        _pool: Dictionary mapping connection IDs to connection objects.
+        _in_use: Dictionary tracking which connections are currently in use.
+        _initialized: Flag to prevent re-initialization.
+    
+    Methods:
+        initialize: Initialize the pool with a database path.
+        get_connection: Retrieve an available connection from the pool.
+        release_connection: Return a connection to the pool.
+        close_all: Close all connections and clear the pool.
+    """
+    
+    _instance: Optional['ConnectionPool'] = None
+    _lock: threading.Lock = threading.Lock()
+    
+    def __new__(cls) -> 'ConnectionPool':
+        """Create or return the singleton instance of ConnectionPool.
+        
+        Returns:
+            The singleton ConnectionPool instance.
+        """
         with cls._lock:
             if cls._instance is None:
                 cls._instance = super(ConnectionPool, cls).__new__(cls)
                 cls._instance._initialized = False
             return cls._instance
     
-    def __init__(self):
-        if self._initialized:
+    def __init__(self) -> None:
+        """Initialize the ConnectionPool instance (only once due to singleton pattern)."""
+        if hasattr(self, '_initialized') and self._initialized:
             return
             
-        self._db_path = None
+        self._db_path: Optional[str] = None
         self._pool: Dict[int, sqlite3.Connection] = {}
         self._in_use: Dict[int, bool] = {}
-        self._lock = threading.Lock()
-        self._initialized = True
+        self._pool_lock: threading.Lock = threading.Lock()
+        self._initialized: bool = True
     
     def initialize(self, db_path: str) -> None:
         """Initialize the connection pool with the database path.
         
         Args:
-            db_path: Path to the SQLite database file
+            db_path: Path to the SQLite database file.
+            
+        Raises:
+            FileNotFoundError: If the database file doesn't exist.
+            ValueError: If the database path is invalid.
         """
+        if not db_path or not isinstance(db_path, str):
+            raise ValueError("Database path must be a non-empty string")
+            
         if not os.path.exists(db_path):
             raise FileNotFoundError(f"Database file not found: {db_path}")
             
-        with self._lock:
+        with self._pool_lock:
             self._db_path = db_path
-            # Close any existing connections
-            for conn_id, conn in self._pool.items():
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-            self._pool.clear()
-            self._in_use.clear()
+            # Close any existing connections before reinitializing
+            self._close_all_connections()
+            logger.info(f"Connection pool initialized with database: {db_path}")
     
     def get_connection(self) -> Optional[sqlite3.Connection]:
         """Get a connection from the pool or create a new one if needed.
         
         Returns:
-            A SQLite connection object or None if the pool is full and all connections are in use
+            A SQLite connection object or None if unable to provide a connection.
+            
+        Raises:
+            ValueError: If the connection pool hasn't been initialized.
         """
         if not self._db_path:
             raise ValueError("Connection pool not initialized with a database path")
             
-        with self._lock:
+        with self._pool_lock:
             # First, try to find an existing connection that's not in use
             for conn_id, in_use in self._in_use.items():
-                if not in_use:
-                    self._in_use[conn_id] = True
-                    return self._pool[conn_id]
+                if not in_use and conn_id in self._pool:
+                    try:
+                        # Test the connection to ensure it's still valid
+                        conn = self._pool[conn_id]
+                        conn.execute("SELECT 1")  # Simple test query
+                        self._in_use[conn_id] = True
+                        logger.debug(f"Reusing existing connection {conn_id}")
+                        return conn
+                    except sqlite3.Error as e:
+                        logger.warning(f"Connection {conn_id} is invalid, removing: {e}")
+                        self._remove_connection(conn_id)
             
             # If all connections are in use but we haven't reached the max, create a new one
             if len(self._pool) < MAX_CONNECTIONS:
                 try:
-                    conn = sqlite3.connect(self._db_path)
+                    conn = sqlite3.connect(
+                        self._db_path,
+                        timeout=CONNECTION_TIMEOUT,
+                        check_same_thread=False
+                    )
+                    # Enable foreign key constraints
+                    conn.execute("PRAGMA foreign_keys = ON")
+                    
                     conn_id = id(conn)
                     self._pool[conn_id] = conn
                     self._in_use[conn_id] = True
+                    logger.debug(f"Created new connection {conn_id}")
                     return conn
-                except Exception as e:
-                    print(f"Error creating new connection: {e}")
+                except sqlite3.Error as e:
+                    logger.error(f"Error creating new connection: {e}")
                     return None
             
             # If we've reached the max connections, return None
+            logger.warning("Connection pool exhausted, no available connections")
             return None
     
-    def release_connection(self, conn: sqlite3.Connection) -> None:
+    def release_connection(self, conn: Optional[sqlite3.Connection]) -> None:
         """Release a connection back to the pool.
         
         Args:
-            conn: The connection to release
+            conn: The connection to release.
         """
         if not conn:
             return
             
         conn_id = id(conn)
-        with self._lock:
-            if conn_id in self._pool:
+        with self._pool_lock:
+            if conn_id in self._pool and conn_id in self._in_use:
                 self._in_use[conn_id] = False
+                logger.debug(f"Released connection {conn_id}")
+            else:
+                logger.warning(f"Attempted to release unknown connection {conn_id}")
     
     def close_all(self) -> None:
-        """Close all connections in the pool."""
-        with self._lock:
-            for conn_id, conn in self._pool.items():
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-            self._pool.clear()
-            self._in_use.clear()
+        """Close all connections in the pool and clear the pool."""
+        with self._pool_lock:
+            self._close_all_connections()
+            logger.info("All connections closed and pool cleared")
+    
+    def _close_all_connections(self) -> None:
+        """Internal method to close all connections without acquiring the lock."""
+        for conn_id, conn in self._pool.items():
+            try:
+                conn.close()
+                logger.debug(f"Closed connection {conn_id}")
+            except sqlite3.Error as e:
+                logger.warning(f"Error closing connection {conn_id}: {e}")
+        self._pool.clear()
+        self._in_use.clear()
+    
+    def _remove_connection(self, conn_id: int) -> None:
+        """Remove a specific connection from the pool.
+        
+        Args:
+            conn_id: The ID of the connection to remove.
+        """
+        if conn_id in self._pool:
+            try:
+                self._pool[conn_id].close()
+            except sqlite3.Error as e:
+                logger.warning(f"Error closing connection {conn_id}: {e}")
+            del self._pool[conn_id]
+            
+        if conn_id in self._in_use:
+            del self._in_use[conn_id]
+    
+    def get_pool_status(self) -> Dict[str, Any]:
+        """Get the current status of the connection pool.
+        
+        Returns:
+            Dictionary containing pool statistics.
+        """
+        with self._pool_lock:
+            total_connections = len(self._pool)
+            active_connections = sum(1 for in_use in self._in_use.values() if in_use)
+            return {
+                'total_connections': total_connections,
+                'active_connections': active_connections,
+                'available_connections': total_connections - active_connections,
+                'max_connections': MAX_CONNECTIONS,
+                'database_path': self._db_path
+            }
 
 
 # Global connection pool instance
 _connection_pool = ConnectionPool()
 
 
-def load_db_path():
-    """Load the MMEX database path from the .env file or use a default path.
-    Also initializes the connection pool with this path.
+def load_db_path() -> Optional[str]:
+    """Load the database path from environment variables or .env file.
 
     Returns:
-        str: Path to the MMEX database file
-
-    Raises:
-        FileNotFoundError: If the database file doesn't exist at the specified or default path
+        Optional[str]: The database path if found, None otherwise.
     """
     try:
-        load_dotenv()
-        db_path = os.getenv("MMEX_DB_PATH")
+        # Try to get from environment variable first
+        db_path = os.getenv(DB_PATH_ENV_VAR)
+        if db_path:
+            logger.info(f"Database path loaded from environment variable: {db_path}")
+            return db_path
 
-        if not db_path:
-            # Default path if not specified in .env
-            db_path = os.path.join(
-                os.path.expanduser("~"), "Documents", "MoneyManagerEx", "data.mmb"
-            )
+        # Try to load from .env file
+        env_file_path = os.path.join(os.path.dirname(__file__), '.env')
+        if os.path.exists(env_file_path):
+            load_dotenv(env_file_path)
+            db_path = os.getenv(DB_PATH_ENV_VAR)
+            if db_path:
+                logger.info(f"Database path loaded from .env file: {db_path}")
+                return db_path
 
-        if not os.path.exists(db_path):
-            raise FileNotFoundError(f"Database file not found: {db_path}")
-            
-        # Initialize the connection pool with the database path
-        _connection_pool.initialize(db_path)
-
-        return db_path
+        logger.warning(f"Database path not found in environment variable '{DB_PATH_ENV_VAR}' or .env file")
+        return None
 
     except Exception as e:
-        print(f"Error loading database path: {e}")
-        raise
+        logger.error(f"Error loading database path: {e}")
+        return None
 
 
-def get_all_accounts(db_path):
+def get_all_accounts(db_path: str) -> Tuple[Optional[str], pd.DataFrame]:
     """Get all accounts from the MMEX database using the connection pool.
 
     Args:
-        db_path (str): Path to the MMEX database file
+        db_path: Path to the MMEX database file.
 
     Returns:
-        tuple: (error_message, accounts_dataframe)
+        Tuple containing:
             - error_message (str or None): Error message if any, None if successful
             - accounts_dataframe (DataFrame): DataFrame containing account information
+            
+    Raises:
+        ValueError: If the database path is invalid.
     """
-    if not db_path or not os.path.exists(db_path):
+    if not db_path or not isinstance(db_path, str):
+        logger.error("Invalid database path provided")
+        return "Invalid database path", pd.DataFrame()
+        
+    if not os.path.exists(db_path):
+        logger.error(f"Database file not found: {db_path}")
         return "Database file not found", pd.DataFrame()
 
     conn = None
@@ -196,70 +375,151 @@ def get_all_accounts(db_path):
         # Get a connection from the pool
         conn = _connection_pool.get_connection()
         if not conn:
+            logger.error("Could not get a database connection from the pool")
             return "Could not get a database connection from the pool", pd.DataFrame()
             
         query = f"""
-        SELECT ACCOUNTID, ACCOUNTNAME, ACCOUNTTYPE, INITIALBAL, FAVORITEACCT, CURRENCYID, STATUS
+        SELECT 
+            ACCOUNTID, 
+            ACCOUNTNAME, 
+            ACCOUNTTYPE, 
+            INITIALBAL, 
+            FAVORITEACCT, 
+            CURRENCYID, 
+            STATUS,
+            NOTES,
+            HELDAT,
+            WEBSITE,
+            CONTACTINFO,
+            ACCESSINFO,
+            STATEMENTLOCKED,
+            STATEMENTDATE,
+            MINIMUMBALANCE,
+            CREDITLIMIT,
+            INTERESTRATE,
+            PAYMENTDUEDATE,
+            MINIMUMPAYMENT
         FROM {ACCOUNT_TABLE}
         WHERE STATUS = 'Open'
         ORDER BY ACCOUNTNAME
         """
+        
         error, accounts_df = handle_database_query(conn, query)
+        if error:
+            logger.error(f"Error retrieving accounts: {error}")
+        else:
+            logger.info(f"Retrieved {len(accounts_df)} accounts from database")
+            
         return error, accounts_df
 
+    except Exception as e:
+        logger.error(f"Unexpected error retrieving accounts: {e}")
+        return f"Unexpected error: {e}", pd.DataFrame()
     finally:
         # Release the connection back to the pool
         if conn:
             _connection_pool.release_connection(conn)
 
 
-def get_account_by_id(db_path, account_id):
+def get_account_by_id(db_path: str, account_id: int) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
     """Get account details by ID using the connection pool.
 
     Args:
-        db_path (str): Path to the MMEX database file
-        account_id (int): Account ID to retrieve
+        db_path: Path to the MMEX database file.
+        account_id: Account ID to retrieve.
 
     Returns:
-        tuple: (error_message, account_data)
+        Tuple containing:
             - error_message (str or None): Error message if any, None if successful
             - account_data (dict or None): Dictionary containing account information
+            
+    Raises:
+        ValueError: If the database path or account_id is invalid.
     """
-    if not db_path or not os.path.exists(db_path):
+    if not db_path or not isinstance(db_path, str):
+        logger.error("Invalid database path provided")
+        return "Invalid database path", None
+        
+    if not os.path.exists(db_path):
+        logger.error(f"Database file not found: {db_path}")
         return "Database file not found", None
+        
+    if not isinstance(account_id, int) or account_id <= 0:
+        logger.error(f"Invalid account_id: {account_id}")
+        return f"Invalid account_id: {account_id}", None
 
     conn = None
     try:
         # Get a connection from the pool
         conn = _connection_pool.get_connection()
         if not conn:
+            logger.error("Could not get a database connection from the pool")
             return "Could not get a database connection from the pool", None
             
         query = f"""
-        SELECT ACCOUNTID, ACCOUNTNAME, ACCOUNTTYPE, INITIALBAL, STATUS
+        SELECT 
+            ACCOUNTID, 
+            ACCOUNTNAME, 
+            ACCOUNTTYPE, 
+            INITIALBAL, 
+            STATUS,
+            NOTES,
+            HELDAT,
+            WEBSITE,
+            CONTACTINFO,
+            ACCESSINFO,
+            FAVORITEACCT,
+            CURRENCYID,
+            STATEMENTLOCKED,
+            STATEMENTDATE,
+            MINIMUMBALANCE,
+            CREDITLIMIT,
+            INTERESTRATE,
+            PAYMENTDUEDATE,
+            MINIMUMPAYMENT
         FROM {ACCOUNT_TABLE}
         WHERE ACCOUNTID = ?
         """
+        
         cursor = conn.cursor()
         cursor.execute(query, (account_id,))
         result = cursor.fetchone()
         
         if not result:
+            logger.warning(f"Account with ID {account_id} not found")
             return f"Account with ID {account_id} not found", None
             
+        # Create a comprehensive account data dictionary
         account_data = {
             "id": result[0],
             "name": result[1],
             "type": result[2],
             "initial_balance": result[3],
-            "status": result[4]
+            "status": result[4],
+            "notes": result[5],
+            "held_at": result[6],
+            "website": result[7],
+            "contact_info": result[8],
+            "access_info": result[9],
+            "favorite_account": result[10],
+            "currency_id": result[11],
+            "statement_locked": result[12],
+            "statement_date": result[13],
+            "minimum_balance": result[14],
+            "credit_limit": result[15],
+            "interest_rate": result[16],
+            "payment_due_date": result[17],
+            "minimum_payment": result[18]
         }
         
+        logger.info(f"Retrieved account details for ID {account_id}: {account_data['name']}")
         return None, account_data
 
     except sqlite3.Error as e:
+        logger.error(f"Database error retrieving account {account_id}: {e}")
         return f"Database error: {e}", None
     except Exception as e:
+        logger.error(f"Unexpected error retrieving account {account_id}: {e}")
         return f"Unexpected error: {e}", None
     finally:
         # Release the connection back to the pool
@@ -267,21 +527,30 @@ def get_account_by_id(db_path, account_id):
             _connection_pool.release_connection(conn)
 
 
-def get_transactions(db_path, start_date_str=None, end_date_str=None, account_id=None):
+def get_transactions(db_path: str, start_date_str: Optional[str] = None, 
+                    end_date_str: Optional[str] = None, account_id: Optional[int] = None) -> Tuple[Optional[str], pd.DataFrame]:
     """Get transactions from the MMEX database using the connection pool.
 
     Args:
-        db_path (str): Path to the MMEX database file
-        start_date_str (str, optional): Start date string in YYYY-MM-DD format
-        end_date_str (str, optional): End date string in YYYY-MM-DD format
-        account_id (int, optional): Account ID to filter transactions
+        db_path: Path to the MMEX database file.
+        start_date_str: Start date string in YYYY-MM-DD format (optional).
+        end_date_str: End date string in YYYY-MM-DD format (optional).
+        account_id: Account ID to filter transactions (optional).
 
     Returns:
-        tuple: (error_message, transactions_dataframe)
+        Tuple containing:
             - error_message (str or None): Error message if any, None if successful
             - transactions_dataframe (DataFrame): DataFrame containing transaction information
+            
+    Raises:
+        ValueError: If the database path is invalid or date formats are incorrect.
     """
-    if not db_path or not os.path.exists(db_path):
+    if not db_path or not isinstance(db_path, str):
+        logger.error("Invalid database path provided")
+        return "Invalid database path", pd.DataFrame()
+        
+    if not os.path.exists(db_path):
+        logger.error(f"Database file not found: {db_path}")
         return "Database file not found", pd.DataFrame()
 
     # Validate date strings
@@ -291,32 +560,57 @@ def get_transactions(db_path, start_date_str=None, end_date_str=None, account_id
     if start_date_str:
         error, start_date = validate_date_format(start_date_str, "start_date_str")
         if error:
+            logger.error(f"Invalid start date format: {start_date_str}")
             return error, pd.DataFrame()
 
     if end_date_str:
         error, end_date = validate_date_format(end_date_str, "end_date_str")
         if error:
+            logger.error(f"Invalid end date format: {end_date_str}")
             return error, pd.DataFrame()
 
     if start_date and end_date:
         error = validate_date_range(start_date_str, end_date_str)
         if error:
+            logger.error(f"Invalid date range: {start_date_str} to {end_date_str}")
             return error, pd.DataFrame()
+            
+    # Validate account_id if provided
+    if account_id is not None and (not isinstance(account_id, int) or account_id <= 0):
+        logger.error(f"Invalid account_id: {account_id}")
+        return f"Invalid account_id: {account_id}", pd.DataFrame()
 
     conn = None
     try:
         # Get a connection from the pool
         conn = _connection_pool.get_connection()
         if not conn:
+            logger.error("Could not get a database connection from the pool")
             return "Could not get a database connection from the pool", pd.DataFrame()
             
-        # Base query
+        # Base query with improved column selection and joins
         query = f"""
-        SELECT t.TRANSID, t.ACCOUNTID, t.TRANSCODE, t.TRANSAMOUNT, 
-               t.TRANSACTIONNUMBER, t.NOTES, t.TRANSDATE, t.FOLLOWUPID, 
-               t.TOTRANSAMOUNT, t.TOSPLITCATEGORY, t.CATEGID, t.SUBCATEGID, 
-               t.TRANSACTIONDATE, t.DELETEDTIME, t.PAYEEID,
-               a.ACCOUNTNAME, c.CATEGNAME, s.SUBCATEGNAME, p.PAYEENAME
+        SELECT 
+            t.TRANSID, 
+            t.ACCOUNTID, 
+            t.TRANSCODE, 
+            t.TRANSAMOUNT, 
+            t.TRANSACTIONNUMBER, 
+            t.NOTES, 
+            t.TRANSDATE, 
+            t.FOLLOWUPID, 
+            t.TOTRANSAMOUNT, 
+            t.TOSPLITCATEGORY, 
+            t.CATEGID, 
+            t.SUBCATEGID, 
+            t.TRANSACTIONDATE, 
+            t.DELETEDTIME, 
+            t.PAYEEID,
+            t.STATUS,
+            a.ACCOUNTNAME, 
+            c.CATEGNAME, 
+            s.SUBCATEGNAME, 
+            p.PAYEENAME
         FROM {TRANSACTION_TABLE} t
         LEFT JOIN {ACCOUNT_TABLE} a ON t.ACCOUNTID = a.ACCOUNTID
         LEFT JOIN {CATEGORY_TABLE} c ON t.CATEGID = c.CATEGID
@@ -325,7 +619,7 @@ def get_transactions(db_path, start_date_str=None, end_date_str=None, account_id
         WHERE t.DELETEDTIME = ''
         """
 
-        # Add filters
+        # Add filters with proper parameter binding
         params = []
         if account_id is not None:
             query += " AND t.ACCOUNTID = ?"
@@ -339,11 +633,12 @@ def get_transactions(db_path, start_date_str=None, end_date_str=None, account_id
             query += " AND t.TRANSDATE <= ?"
             params.append(end_date.strftime("%Y-%m-%d"))
 
-        query += " ORDER BY t.TRANSDATE DESC"
+        query += " ORDER BY t.TRANSDATE DESC, t.TRANSID DESC"
 
-        # Execute query
+        # Execute query with proper error handling
         error, transactions_df = handle_database_query(conn, query, params)
         if error:
+            logger.error(f"Error retrieving transactions: {error}")
             return error, pd.DataFrame()
 
         # Optimize tag retrieval with a single query instead of N+1 queries
@@ -379,79 +674,89 @@ def get_transactions(db_path, start_date_str=None, end_date_str=None, account_id
         else:
             transactions_df['TAGS'] = ''
 
+        logger.info(f"Retrieved {len(transactions_df)} transactions from database")
         return None, transactions_df
 
+    except Exception as e:
+        logger.error(f"Unexpected error retrieving transactions: {e}")
+        return f"Unexpected error: {e}", pd.DataFrame()
     finally:
         # Release the connection back to the pool
         if conn:
             _connection_pool.release_connection(conn)
 
 
-def calculate_balance_for_account(db_path, account_id, date=None):
-    """Calculate the balance for a specific account up to a given date using the connection pool.
+def calculate_balance_for_account(db_path: str, account_id: int) -> Tuple[Optional[str], float]:
+    """Calculate the balance for a specific account using SQL aggregation.
 
     Args:
-        db_path: Path to the MMEX database file
-        account_id: Account ID to calculate balance for
-        date: Optional date to calculate balance up to
+        db_path: Path to the MMEX database file.
+        account_id: The account ID to calculate balance for.
 
     Returns:
-        tuple: (error_message, balance) where error_message is None on success
+        Tuple containing:
+            - error_message (str or None): Error message if any, None if successful
+            - balance (float): The calculated balance for the account
+            
+    Raises:
+        ValueError: If the database path is invalid or account_id is invalid.
     """
-    # Validate inputs
-    if not db_path or not os.path.exists(db_path):
-        return "Database file does not exist", None
-
-    if not account_id:
-        return "Account ID is required", None
+    if not db_path or not isinstance(db_path, str):
+        logger.error("Invalid database path provided")
+        return "Invalid database path", 0.0
+        
+    if not os.path.exists(db_path):
+        logger.error(f"Database file not found: {db_path}")
+        return "Database file not found", 0.0
+        
+    if not isinstance(account_id, int) or account_id <= 0:
+        logger.error(f"Invalid account_id: {account_id}")
+        return f"Invalid account_id: {account_id}", 0.0
 
     conn = None
     try:
         # Get a connection from the pool
         conn = _connection_pool.get_connection()
         if not conn:
-            return "Could not get a database connection from the pool", None
-            
-        # Optimize balance calculation using SQL aggregation instead of Python loops
-        # Get account initial balance and calculate transaction totals in one query
+            logger.error("Could not get a database connection from the pool")
+            return "Could not get a database connection from the pool", 0.0
+
+        # Use SQL aggregation for better performance
         query = f"""
         SELECT 
-            a.INITIALBAL,
-            COALESCE(SUM(CASE WHEN t.TRANSCODE = 'Deposit' THEN t.TRANSAMOUNT ELSE 0 END), 0) as total_deposits,
-            COALESCE(SUM(CASE WHEN t.TRANSCODE = 'Withdrawal' THEN t.TRANSAMOUNT ELSE 0 END), 0) as total_withdrawals
-        FROM {ACCOUNT_TABLE} a
-        LEFT JOIN {TRANSACTION_TABLE} t ON a.ACCOUNTID = t.ACCOUNTID 
-            AND t.DELETEDTIME = ''
+            COALESCE(SUM(
+                CASE 
+                    WHEN TRANSCODE = 'Deposit' THEN TRANSAMOUNT
+                    WHEN TRANSCODE = 'Withdrawal' THEN -TRANSAMOUNT
+                    WHEN TRANSCODE = 'Transfer' AND ACCOUNTID = ? THEN -TRANSAMOUNT
+                    WHEN TRANSCODE = 'Transfer' AND TOACCOUNTID = ? THEN TRANSAMOUNT
+                    ELSE 0
+                END
+            ), 0.0) as BALANCE
+        FROM {TRANSACTION_TABLE}
+        WHERE (ACCOUNTID = ? OR TOACCOUNTID = ?) 
+        AND DELETEDTIME = ''
         """
-        
-        params = [account_id]
-        
-        if date:
-            query += " AND t.TRANSDATE <= ?"
-            params.append(date.strftime("%Y-%m-%d"))
-            
-        query += " WHERE a.ACCOUNTID = ? GROUP BY a.ACCOUNTID, a.INITIALBAL"
-        params.append(account_id)
-        
+
+        # Execute query with proper parameter binding
+        params = [account_id, account_id, account_id, account_id]
         error, result_df = handle_database_query(conn, query, params)
         
         if error:
-            return error, None
-            
+            logger.error(f"Error calculating balance for account {account_id}: {error}")
+            return error, 0.0
+
         if result_df.empty:
-            return f"Account with ID {account_id} not found", None
-            
-        row = result_df.iloc[0]
-        initial_balance = row['INITIALBAL'] or 0
-        total_deposits = row['total_deposits'] or 0
-        total_withdrawals = row['total_withdrawals'] or 0
-        
-        balance = initial_balance + total_deposits - total_withdrawals
+            logger.warning(f"No transactions found for account {account_id}")
+            return None, 0.0
+
+        balance = float(result_df.iloc[0]['BALANCE'])
+        logger.info(f"Calculated balance for account {account_id}: {balance}")
         return None, balance
-    except sqlite3.Error as e:
-        return f"Database error: {e}", None
+
     except Exception as e:
-        return f"Unexpected error calculating balance: {e}", None
+        logger.error(f"Unexpected error calculating balance for account {account_id}: {e}")
+        return f"Unexpected error: {e}", 0.0
     finally:
         # Release the connection back to the pool
         if conn:
