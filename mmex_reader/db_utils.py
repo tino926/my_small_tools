@@ -528,7 +528,8 @@ def get_account_by_id(db_path: str, account_id: int) -> Tuple[Optional[str], Opt
 
 
 def get_transactions(db_path: str, start_date_str: Optional[str] = None, 
-                    end_date_str: Optional[str] = None, account_id: Optional[int] = None) -> Tuple[Optional[str], pd.DataFrame]:
+                    end_date_str: Optional[str] = None, account_id: Optional[int] = None,
+                    page_size: Optional[int] = None, page_number: Optional[int] = None) -> Tuple[Optional[str], pd.DataFrame]:
     """Get transactions from the MMEX database using the connection pool.
 
     Args:
@@ -536,6 +537,8 @@ def get_transactions(db_path: str, start_date_str: Optional[str] = None,
         start_date_str: Start date string in YYYY-MM-DD format (optional).
         end_date_str: End date string in YYYY-MM-DD format (optional).
         account_id: Account ID to filter transactions (optional).
+        page_size: Number of transactions per page (optional, defaults to all).
+        page_number: Page number to retrieve (1-based, optional).
 
     Returns:
         Tuple containing:
@@ -579,6 +582,20 @@ def get_transactions(db_path: str, start_date_str: Optional[str] = None,
     if account_id is not None and (not isinstance(account_id, int) or account_id <= 0):
         logger.error(f"Invalid account_id: {account_id}")
         return f"Invalid account_id: {account_id}", pd.DataFrame()
+
+    # Validate pagination parameters
+    if page_size is not None and (not isinstance(page_size, int) or page_size <= 0):
+        logger.error(f"Invalid page_size: {page_size}")
+        return f"Invalid page_size: {page_size}", pd.DataFrame()
+        
+    if page_number is not None and (not isinstance(page_number, int) or page_number <= 0):
+        logger.error(f"Invalid page_number: {page_number}")
+        return f"Invalid page_number: {page_number}", pd.DataFrame()
+        
+    # If page_number is provided, page_size must also be provided
+    if page_number is not None and page_size is None:
+        logger.error("page_size must be provided when page_number is specified")
+        return "page_size must be provided when page_number is specified", pd.DataFrame()
 
     conn = None
     try:
@@ -634,6 +651,14 @@ def get_transactions(db_path: str, start_date_str: Optional[str] = None,
             params.append(end_date.strftime("%Y-%m-%d"))
 
         query += " ORDER BY t.TRANSDATE DESC, t.TRANSID DESC"
+
+        # Add pagination if specified
+        if page_size is not None:
+            if page_number is not None:
+                offset = (page_number - 1) * page_size
+                query += f" LIMIT {page_size} OFFSET {offset}"
+            else:
+                query += f" LIMIT {page_size}"
 
         # Execute query with proper error handling
         error, transactions_df = handle_database_query(conn, query, params)
