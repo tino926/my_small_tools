@@ -1164,8 +1164,11 @@ def _format_cell_value(column_name, value):
     except Exception as e:
         logger.error(f"Error formatting cell value: {e}")
         return str(value) if value is not None else ""
-            else:
-                grid.add_widget(label)
+
+
+# =============================================================================
+# TRANSACTION DETAILS POPUP
+# =============================================================================
 
 
 class TransactionDetailsPopup(BaseUIComponent):
