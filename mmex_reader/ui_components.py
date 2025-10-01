@@ -785,7 +785,7 @@ class AccountTabContent(BaseUIComponent):
                 halign='right',
                 valign='middle',
                 text_size=(None, None)
-            )
+            self.header.add_widget(self.account_label)
             self.header.add_widget(self.balance_label)
         
         self.add_widget(self.header)
