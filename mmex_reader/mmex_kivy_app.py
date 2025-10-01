@@ -52,6 +52,7 @@ from ui_components import (
     BUTTON_COLOR,
 )
 from visualization import VisualizationTab
+from pagination_utils import get_transaction_count, PaginationInfo
 
 # Constants
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -110,6 +111,12 @@ class MMEXAppLayout(BoxLayout):
         self.all_transactions_df = pd.DataFrame()
         self.filtered_transactions_df = pd.DataFrame()
         self.account_tabs = {}
+        
+        # Initialize pagination state
+        self.current_page = 1
+        self.page_size = 50  # Default page size
+        self.total_count = 0
+        self.pagination_info = None
 
         # Create UI components
         self._create_date_inputs()
@@ -195,18 +202,9 @@ class MMEXAppLayout(BoxLayout):
 
     def run_global_query(self):
         """Execute the global transaction query and update the UI."""
-        start_date_str = self.start_date_input.get_date() if hasattr(self.start_date_input, 'get_date') else self.start_date_input.text
-        end_date_str = self.end_date_input.get_date() if hasattr(self.end_date_input, 'get_date') else self.end_date_input.text
-
-        error, self.all_transactions_df = get_transactions(
-            self.db_path, start_date_str, end_date_str
-        )
-
-        if error:
-            show_popup("Error", error)
-            self.all_transactions_df = pd.DataFrame()
-
-        self.apply_search_filter()
+        # Reset pagination to first page when running new query
+        self.current_page = 1
+        self._load_paginated_data()
 
     def on_tab_switch(self, instance, tab):
         """Handle tab switching to update content."""
@@ -226,7 +224,12 @@ class MMEXAppLayout(BoxLayout):
             sort_callback=self.sort_transactions,
             row_click_callback=self.on_transaction_row_click,
         )
-        self.all_transactions_status.text = f"{len(self.filtered_transactions_df)} transactions found"
+        
+        # Update status with pagination info
+        if self.pagination_info:
+            self.all_transactions_status.text = f"{len(self.filtered_transactions_df)} transactions on current page"
+        else:
+            self.all_transactions_status.text = f"{len(self.filtered_transactions_df)} transactions found"
     
     def _update_account_tab(self, account_name):
         """Update account-specific tab content.
@@ -445,6 +448,9 @@ class MMEXAppLayout(BoxLayout):
         )
         all_content.add_widget(self.all_transactions_status)
 
+        # Pagination controls
+        self._create_pagination_controls(all_content)
+
         # Scroll view for transactions
         scroll_view = ScrollView(size_hint=(1, 1))
 
@@ -586,7 +592,9 @@ class MMEXAppLayout(BoxLayout):
 
     def _on_search_change(self, *args):
         """Handle search input changes."""
-        self._apply_search_filter()
+        # Reset to first page when search changes
+        self.current_page = 1
+        self._load_paginated_data()
 
     def _apply_search_filter(self, *args):
         """Apply search filter to transactions."""
@@ -655,8 +663,9 @@ class MMEXAppLayout(BoxLayout):
         """Clear search filter."""
         self.search_input.text = ""
         self.filter_button.text = "All Fields"
-        self.filtered_transactions_df = self.all_transactions_df
-        self._update_current_tab()
+        # Reset to first page when clearing filter
+        self.current_page = 1
+        self._load_paginated_data()
         
     def on_transaction_row_click(self, transaction_data):
         """Handle click on a transaction row.
@@ -693,6 +702,192 @@ class MMEXAppLayout(BoxLayout):
         # For now, just show a confirmation popup
         # In a future implementation, this would delete from the database
         show_popup("Transaction Deleted", "Transaction has been deleted.")
+
+    def _create_pagination_controls(self, parent_layout):
+        """Create pagination controls for the All Transactions tab.
+        
+        Args:
+            parent_layout: Parent layout to add pagination controls to
+        """
+        # Pagination layout
+        if self.is_mobile:
+            self.pagination_layout = BoxLayout(
+                orientation='vertical', 
+                size_hint=(1, None), 
+                height=80, 
+                spacing=5
+            )
+            
+            # Page info row
+            page_info_layout = BoxLayout(orientation='horizontal', size_hint=(1, 0.5))
+            self.pagination_info_label = Label(
+                text="No data", 
+                size_hint=(1, 1),
+                text_size=(None, None),
+                halign='center'
+            )
+            page_info_layout.add_widget(self.pagination_info_label)
+            self.pagination_layout.add_widget(page_info_layout)
+            
+            # Navigation buttons row
+            nav_layout = BoxLayout(orientation='horizontal', size_hint=(1, 0.5), spacing=10)
+            self.prev_button = Button(
+                text="Previous", 
+                size_hint=(0.33, 1), 
+                background_color=BUTTON_COLOR,
+                disabled=True
+            )
+            self.page_input = TextInput(
+                text="1", 
+                size_hint=(0.34, 1), 
+                multiline=False,
+                input_filter='int',
+                halign='center'
+            )
+            self.next_button = Button(
+                text="Next", 
+                size_hint=(0.33, 1), 
+                background_color=BUTTON_COLOR,
+                disabled=True
+            )
+            nav_layout.add_widget(self.prev_button)
+            nav_layout.add_widget(self.page_input)
+            nav_layout.add_widget(self.next_button)
+            self.pagination_layout.add_widget(nav_layout)
+        else:
+            self.pagination_layout = BoxLayout(
+                orientation='horizontal', 
+                size_hint=(1, None), 
+                height=40, 
+                spacing=10
+            )
+            
+            # Previous button
+            self.prev_button = Button(
+                text="Previous", 
+                size_hint=(None, 1), 
+                width=100, 
+                background_color=BUTTON_COLOR,
+                disabled=True
+            )
+            self.pagination_layout.add_widget(self.prev_button)
+            
+            # Page info and input
+            self.pagination_info_label = Label(
+                text="No data", 
+                size_hint=(0.6, 1),
+                text_size=(None, None),
+                halign='center'
+            )
+            self.pagination_layout.add_widget(self.pagination_info_label)
+            
+            # Page input
+            page_input_layout = BoxLayout(orientation='horizontal', size_hint=(None, 1), width=120, spacing=5)
+            page_input_layout.add_widget(Label(text="Page:", size_hint=(None, 1), width=40))
+            self.page_input = TextInput(
+                text="1", 
+                size_hint=(None, 1), 
+                width=60, 
+                multiline=False,
+                input_filter='int'
+            )
+            page_input_layout.add_widget(self.page_input)
+            self.pagination_layout.add_widget(page_input_layout)
+            
+            # Next button
+            self.next_button = Button(
+                text="Next", 
+                size_hint=(None, 1), 
+                width=100, 
+                background_color=BUTTON_COLOR,
+                disabled=True
+            )
+            self.pagination_layout.add_widget(self.next_button)
+        
+        # Bind events
+        self.prev_button.bind(on_release=self._on_previous_page)
+        self.next_button.bind(on_release=self._on_next_page)
+        self.page_input.bind(on_text_validate=self._on_page_input_change)
+        
+        parent_layout.add_widget(self.pagination_layout)
+
+    def _on_previous_page(self, instance):
+        """Handle previous page button click."""
+        if self.current_page > 1:
+            self.current_page -= 1
+            self._load_paginated_data()
+
+    def _on_next_page(self, instance):
+        """Handle next page button click."""
+        if self.pagination_info and self.pagination_info.has_next:
+            self.current_page += 1
+            self._load_paginated_data()
+
+    def _on_page_input_change(self, instance):
+        """Handle page input change."""
+        try:
+            page = int(instance.text)
+            if self.pagination_info and 1 <= page <= self.pagination_info.total_pages:
+                self.current_page = page
+                self._load_paginated_data()
+            else:
+                # Reset to current page if invalid
+                instance.text = str(self.current_page)
+        except ValueError:
+            # Reset to current page if not a number
+            instance.text = str(self.current_page)
+
+    def _update_pagination_controls(self):
+        """Update pagination control states and labels."""
+        if not self.pagination_info:
+            self.pagination_info_label.text = "No data"
+            self.prev_button.disabled = True
+            self.next_button.disabled = True
+            self.page_input.text = "1"
+            return
+        
+        # Update info label
+        self.pagination_info_label.text = self.pagination_info.get_page_info_text()
+        
+        # Update button states
+        self.prev_button.disabled = not self.pagination_info.has_previous
+        self.next_button.disabled = not self.pagination_info.has_next
+        
+        # Update page input
+        self.page_input.text = str(self.current_page)
+
+    def _load_paginated_data(self):
+        """Load paginated transaction data."""
+        start_date_str = self.start_date_input.get_date() if hasattr(self.start_date_input, 'get_date') else self.start_date_input.text
+        end_date_str = self.end_date_input.get_date() if hasattr(self.end_date_input, 'get_date') else self.end_date_input.text
+
+        # Get total count first
+        error, self.total_count = get_transaction_count(
+            self.db_path, start_date_str, end_date_str
+        )
+        
+        if error:
+            show_popup("Error", f"Error getting transaction count: {error}")
+            return
+
+        # Create pagination info
+        self.pagination_info = PaginationInfo(self.total_count, self.page_size, self.current_page)
+
+        # Get paginated transactions
+        error, self.all_transactions_df = get_transactions(
+            self.db_path, start_date_str, end_date_str, 
+            page_size=self.page_size, page_number=self.current_page
+        )
+
+        if error:
+            show_popup("Error", error)
+            self.all_transactions_df = pd.DataFrame()
+
+        # Apply search filter to paginated data
+        self._apply_search_filter()
+        
+        # Update pagination controls
+        self._update_pagination_controls()
         
 
 
