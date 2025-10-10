@@ -1,0 +1,338 @@
+"""Configuration Management Module for MMEX Reader Application.
+
+This module provides a centralized configuration management system that supports
+both file-based configuration (.env files) and GUI-based settings management.
+"""
+
+import json
+import os
+from dataclasses import dataclass, asdict
+from typing import Optional, Dict, Any
+from pathlib import Path
+
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.filechooser import FileChooserListView
+from kivy.uix.label import Label
+from kivy.uix.popup import Popup
+from kivy.uix.spinner import Spinner
+from kivy.uix.switch import Switch
+from kivy.uix.textinput import TextInput
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.scrollview import ScrollView
+
+
+@dataclass
+class AppConfig:
+    """Application configuration data class."""
+    
+    # Database settings
+    db_file_path: str = ""
+    
+    # UI settings
+    page_size: int = 50
+    default_font_size: int = 14
+    theme_mode: str = "light"  # "light" or "dark"
+    
+    # Date settings
+    date_format: str = "%Y-%m-%d"
+    default_date_range_days: int = 30
+    
+    # Performance settings
+    enable_caching: bool = True
+    cache_timeout_minutes: int = 15
+    max_cache_size_mb: int = 100
+    
+    # Export settings
+    default_export_format: str = "csv"  # "csv", "json", "pdf"
+    export_directory: str = ""
+    
+    # Chart settings
+    default_chart_type: str = "Monthly Spending"
+    chart_color_scheme: str = "default"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert config to dictionary."""
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'AppConfig':
+        """Create config from dictionary."""
+        return cls(**data)
+
+
+class ConfigManager:
+    """Manages application configuration with file persistence."""
+    
+    def __init__(self, config_file: str = "mmex_config.json"):
+        self.config_file = Path(config_file)
+        self.config = AppConfig()
+        self.load_config()
+    
+    def load_config(self) -> None:
+        """Load configuration from file."""
+        if self.config_file.exists():
+            try:
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.config = AppConfig.from_dict(data)
+            except (json.JSONDecodeError, TypeError, ValueError) as e:
+                print(f"Error loading config: {e}. Using defaults.")
+                self.config = AppConfig()
+        
+        # Load database path from .env if not set in config
+        if not self.config.db_file_path:
+            from db_utils import load_db_path
+            env_db_path = load_db_path()
+            if env_db_path:
+                self.config.db_file_path = env_db_path
+    
+    def save_config(self) -> None:
+        """Save configuration to file."""
+        try:
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(self.config.to_dict(), f, indent=2)
+        except Exception as e:
+            print(f"Error saving config: {e}")
+    
+    def get_config(self) -> AppConfig:
+        """Get current configuration."""
+        return self.config
+    
+    def update_config(self, **kwargs) -> None:
+        """Update configuration with new values."""
+        for key, value in kwargs.items():
+            if hasattr(self.config, key):
+                setattr(self.config, key, value)
+        self.save_config()
+
+
+class SettingsPopup(Popup):
+    """Settings configuration popup window."""
+    
+    def __init__(self, config_manager: ConfigManager, **kwargs):
+        super().__init__(**kwargs)
+        self.config_manager = config_manager
+        self.config = config_manager.get_config()
+        
+        self.title = "Application Settings"
+        self.size_hint = (0.8, 0.9)
+        self.auto_dismiss = False
+        
+        # Create main layout
+        main_layout = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        
+        # Create scrollable content
+        scroll = ScrollView()
+        content_layout = GridLayout(cols=2, spacing=10, size_hint_y=None)
+        content_layout.bind(minimum_height=content_layout.setter('height'))
+        
+        # Database settings
+        self._add_section_header(content_layout, "Database Settings")
+        self._add_file_picker(content_layout, "Database File:", self.config.db_file_path, "db_file_path")
+        
+        # UI settings
+        self._add_section_header(content_layout, "UI Settings")
+        self._add_number_input(content_layout, "Page Size:", str(self.config.page_size), "page_size")
+        self._add_number_input(content_layout, "Font Size:", str(self.config.default_font_size), "default_font_size")
+        self._add_spinner(content_layout, "Theme:", self.config.theme_mode, ["light", "dark"], "theme_mode")
+        
+        # Date settings
+        self._add_section_header(content_layout, "Date Settings")
+        self._add_text_input(content_layout, "Date Format:", self.config.date_format, "date_format")
+        self._add_number_input(content_layout, "Default Range (days):", str(self.config.default_date_range_days), "default_date_range_days")
+        
+        # Performance settings
+        self._add_section_header(content_layout, "Performance Settings")
+        self._add_switch(content_layout, "Enable Caching:", self.config.enable_caching, "enable_caching")
+        self._add_number_input(content_layout, "Cache Timeout (min):", str(self.config.cache_timeout_minutes), "cache_timeout_minutes")
+        self._add_number_input(content_layout, "Max Cache Size (MB):", str(self.config.max_cache_size_mb), "max_cache_size_mb")
+        
+        # Export settings
+        self._add_section_header(content_layout, "Export Settings")
+        self._add_spinner(content_layout, "Default Format:", self.config.default_export_format, ["csv", "json", "pdf"], "default_export_format")
+        self._add_file_picker(content_layout, "Export Directory:", self.config.export_directory, "export_directory", select_dir=True)
+        
+        # Chart settings
+        self._add_section_header(content_layout, "Chart Settings")
+        chart_types = ["Monthly Spending", "Category Distribution", "Account Balance", "Income vs Expense"]
+        self._add_spinner(content_layout, "Default Chart:", self.config.default_chart_type, chart_types, "default_chart_type")
+        color_schemes = ["default", "pastel", "bright", "monochrome"]
+        self._add_spinner(content_layout, "Color Scheme:", self.config.chart_color_scheme, color_schemes, "chart_color_scheme")
+        
+        scroll.add_widget(content_layout)
+        main_layout.add_widget(scroll)
+        
+        # Buttons
+        button_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, spacing=10)
+        
+        save_btn = Button(text="Save", background_color=(0.2, 0.8, 0.2, 1))
+        save_btn.bind(on_press=self._save_settings)
+        
+        cancel_btn = Button(text="Cancel", background_color=(0.8, 0.2, 0.2, 1))
+        cancel_btn.bind(on_press=self.dismiss)
+        
+        reset_btn = Button(text="Reset to Defaults", background_color=(0.8, 0.8, 0.2, 1))
+        reset_btn.bind(on_press=self._reset_to_defaults)
+        
+        button_layout.add_widget(save_btn)
+        button_layout.add_widget(cancel_btn)
+        button_layout.add_widget(reset_btn)
+        
+        main_layout.add_widget(button_layout)
+        self.content = main_layout
+        
+        # Store references to input widgets
+        self.input_widgets = {}
+    
+    def _add_section_header(self, layout, title):
+        """Add a section header to the layout."""
+        header = Label(
+            text=f"[b]{title}[/b]",
+            markup=True,
+            size_hint_y=None,
+            height=40,
+            color=(0.2, 0.2, 0.8, 1)
+        )
+        layout.add_widget(header)
+        layout.add_widget(Label())  # Empty cell for spacing
+    
+    def _add_text_input(self, layout, label_text, value, config_key):
+        """Add a text input field."""
+        layout.add_widget(Label(text=label_text, size_hint_y=None, height=35))
+        text_input = TextInput(text=str(value), multiline=False, size_hint_y=None, height=35)
+        layout.add_widget(text_input)
+        self.input_widgets[config_key] = text_input
+    
+    def _add_number_input(self, layout, label_text, value, config_key):
+        """Add a number input field."""
+        layout.add_widget(Label(text=label_text, size_hint_y=None, height=35))
+        number_input = TextInput(text=str(value), multiline=False, input_filter='int', size_hint_y=None, height=35)
+        layout.add_widget(number_input)
+        self.input_widgets[config_key] = number_input
+    
+    def _add_switch(self, layout, label_text, value, config_key):
+        """Add a switch (boolean) input."""
+        layout.add_widget(Label(text=label_text, size_hint_y=None, height=35))
+        switch = Switch(active=value, size_hint_y=None, height=35)
+        layout.add_widget(switch)
+        self.input_widgets[config_key] = switch
+    
+    def _add_spinner(self, layout, label_text, value, options, config_key):
+        """Add a spinner (dropdown) input."""
+        layout.add_widget(Label(text=label_text, size_hint_y=None, height=35))
+        spinner = Spinner(text=str(value), values=options, size_hint_y=None, height=35)
+        layout.add_widget(spinner)
+        self.input_widgets[config_key] = spinner
+    
+    def _add_file_picker(self, layout, label_text, value, config_key, select_dir=False):
+        """Add a file picker input."""
+        layout.add_widget(Label(text=label_text, size_hint_y=None, height=35))
+        
+        file_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=35)
+        text_input = TextInput(text=str(value), multiline=False)
+        browse_btn = Button(text="Browse", size_hint_x=None, width=80)
+        
+        def open_file_chooser(instance):
+            self._show_file_chooser(text_input, select_dir)
+        
+        browse_btn.bind(on_press=open_file_chooser)
+        
+        file_layout.add_widget(text_input)
+        file_layout.add_widget(browse_btn)
+        layout.add_widget(file_layout)
+        
+        self.input_widgets[config_key] = text_input
+    
+    def _show_file_chooser(self, text_input, select_dir=False):
+        """Show file chooser dialog."""
+        file_chooser = FileChooserListView()
+        if text_input.text and os.path.exists(text_input.text):
+            file_chooser.path = os.path.dirname(text_input.text) if not select_dir else text_input.text
+        
+        popup_content = BoxLayout(orientation='vertical')
+        popup_content.add_widget(file_chooser)
+        
+        button_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=50)
+        select_btn = Button(text="Select")
+        cancel_btn = Button(text="Cancel")
+        
+        button_layout.add_widget(select_btn)
+        button_layout.add_widget(cancel_btn)
+        popup_content.add_widget(button_layout)
+        
+        file_popup = Popup(title="Select File" if not select_dir else "Select Directory",
+                          content=popup_content, size_hint=(0.8, 0.8))
+        
+        def select_file(instance):
+            if select_dir:
+                text_input.text = file_chooser.path
+            else:
+                if file_chooser.selection:
+                    text_input.text = file_chooser.selection[0]
+            file_popup.dismiss()
+        
+        select_btn.bind(on_press=select_file)
+        cancel_btn.bind(on_press=file_popup.dismiss)
+        
+        file_popup.open()
+    
+    def _save_settings(self, instance):
+        """Save the current settings."""
+        try:
+            # Collect values from input widgets
+            updates = {}
+            for key, widget in self.input_widgets.items():
+                if isinstance(widget, TextInput):
+                    value = widget.text
+                    # Convert to appropriate type
+                    if key in ['page_size', 'default_font_size', 'default_date_range_days', 
+                              'cache_timeout_minutes', 'max_cache_size_mb']:
+                        value = int(value) if value.isdigit() else getattr(self.config, key)
+                    updates[key] = value
+                elif isinstance(widget, Switch):
+                    updates[key] = widget.active
+                elif isinstance(widget, Spinner):
+                    updates[key] = widget.text
+            
+            # Update configuration
+            self.config_manager.update_config(**updates)
+            
+            # Show success message
+            success_popup = Popup(
+                title="Settings Saved",
+                content=Label(text="Settings have been saved successfully!"),
+                size_hint=(0.4, 0.3)
+            )
+            success_popup.open()
+            
+            # Close after a delay
+            from kivy.clock import Clock
+            Clock.schedule_once(lambda dt: success_popup.dismiss(), 2)
+            Clock.schedule_once(lambda dt: self.dismiss(), 2.5)
+            
+        except Exception as e:
+            error_popup = Popup(
+                title="Error",
+                content=Label(text=f"Error saving settings: {str(e)}"),
+                size_hint=(0.4, 0.3)
+            )
+            error_popup.open()
+    
+    def _reset_to_defaults(self, instance):
+        """Reset all settings to default values."""
+        default_config = AppConfig()
+        
+        # Update input widgets with default values
+        for key, widget in self.input_widgets.items():
+            default_value = getattr(default_config, key)
+            if isinstance(widget, TextInput):
+                widget.text = str(default_value)
+            elif isinstance(widget, Switch):
+                widget.active = default_value
+            elif isinstance(widget, Spinner):
+                widget.text = str(default_value)
+
+
+# Global config manager instance
+config_manager = ConfigManager()
