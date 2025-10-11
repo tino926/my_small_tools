@@ -1,0 +1,221 @@
+#:kivy 2.1.0
+
+<MMEXAppLayout>:
+    orientation: 'vertical'
+    spacing: dp(10)
+    padding: dp(10)
+
+<DateInputLayout>:
+    orientation: 'horizontal'
+    size_hint: 1, None
+    height: dp(50)
+    spacing: dp(10)
+    
+    Label:
+        text: 'Start Date:'
+        size_hint: None, 1
+        width: dp(80)
+        text_size: self.size
+        halign: 'left'
+        valign: 'middle'
+    
+    TextInput:
+        id: start_date_input
+        size_hint: 0.3, 1
+        multiline: False
+        hint_text: 'YYYY-MM-DD'
+    
+    Label:
+        text: 'End Date:'
+        size_hint: None, 1
+        width: dp(80)
+        text_size: self.size
+        halign: 'left'
+        valign: 'middle'
+    
+    TextInput:
+        id: end_date_input
+        size_hint: 0.3, 1
+        multiline: False
+        hint_text: 'YYYY-MM-DD'
+    
+    Button:
+        text: 'Query'
+        size_hint: None, 1
+        width: dp(100)
+        background_color: 0.2, 0.6, 1, 1
+
+<SearchFilterLayout>:
+    orientation: 'horizontal'
+    size_hint: 1, None
+    height: dp(50)
+    spacing: dp(10)
+    
+    Label:
+        text: 'Search:'
+        size_hint: None, 1
+        width: dp(60)
+        text_size: self.size
+        halign: 'left'
+        valign: 'middle'
+    
+    TextInput:
+        id: search_input
+        size_hint: 0.6, 1
+        multiline: False
+        hint_text: 'Search transactions...'
+    
+    Button:
+        text: 'Filter Options'
+        size_hint: None, 1
+        width: dp(120)
+        background_color: 0.8, 0.8, 0.8, 1
+    
+    Button:
+        text: 'Clear'
+        size_hint: None, 1
+        width: dp(80)
+        background_color: 1, 0.6, 0.6, 1
+
+<TransactionGrid>:
+    cols: 7
+    size_hint: 1, None
+    height: self.minimum_height
+    row_default_height: dp(35)
+    row_force_default: True
+    spacing: dp(2)
+
+<PaginationControls>:
+    orientation: 'horizontal'
+    size_hint: 1, None
+    height: dp(40)
+    spacing: dp(10)
+    
+    Button:
+        id: prev_button
+        text: 'Previous'
+        size_hint: None, 1
+        width: dp(100)
+        background_color: 0.2, 0.6, 1, 1
+        disabled: True
+    
+    Label:
+        id: pagination_info
+        text: 'No data'
+        size_hint: 0.6, 1
+        text_size: self.size
+        halign: 'center'
+        valign: 'middle'
+    
+    BoxLayout:
+        orientation: 'horizontal'
+        size_hint: None, 1
+        width: dp(120)
+        spacing: dp(5)
+        
+        Label:
+            text: 'Page:'
+            size_hint: None, 1
+            width: dp(40)
+            text_size: self.size
+            halign: 'left'
+            valign: 'middle'
+        
+        TextInput:
+            id: page_input
+            text: '1'
+            size_hint: None, 1
+            width: dp(60)
+            multiline: False
+            input_filter: 'int'
+    
+    Button:
+        id: next_button
+        text: 'Next'
+        size_hint: None, 1
+        width: dp(100)
+        background_color: 0.2, 0.6, 1, 1
+        disabled: True
+
+<AccountTabContent>:
+    orientation: 'vertical'
+    spacing: dp(5)
+    padding: dp(10)
+    
+    BoxLayout:
+        orientation: 'horizontal'
+        size_hint: 1, None
+        height: dp(40)
+        spacing: dp(10)
+        
+        Label:
+            text: 'Account Balance:'
+            size_hint: None, 1
+            width: dp(120)
+            text_size: self.size
+            halign: 'left'
+            valign: 'middle'
+        
+        Label:
+            id: balance_label
+            text: '$0.00'
+            size_hint: 0.3, 1
+            text_size: self.size
+            halign: 'left'
+            valign: 'middle'
+            color: 0, 0.7, 0, 1
+        
+        Widget:
+            size_hint: 0.7, 1
+    
+    ScrollView:
+        GridLayout:
+            id: results_grid
+            cols: 7
+            size_hint: 1, None
+            height: self.minimum_height
+            row_default_height: dp(35)
+            row_force_default: True
+            spacing: dp(2)
+    
+    Label:
+        id: status_label
+        text: 'Ready'
+        size_hint: 1, None
+        height: dp(30)
+        text_size: self.size
+        halign: 'left'
+        valign: 'middle'
+
+<VisualizationContent>:
+    orientation: 'vertical'
+    spacing: dp(10)
+    padding: dp(10)
+    
+    BoxLayout:
+        orientation: 'horizontal'
+        size_hint: 1, None
+        height: dp(50)
+        spacing: dp(10)
+        
+        Label:
+            text: 'Chart Type:'
+            size_hint: None, 1
+            width: dp(80)
+            text_size: self.size
+            halign: 'left'
+            valign: 'middle'
+        
+        Spinner:
+            id: chart_type_spinner
+            text: 'Monthly Spending'
+            values: ['Monthly Spending', 'Category Distribution', 'Account Balance', 'Income vs Expense']
+            size_hint: 0.3, 1
+        
+        Widget:
+            size_hint: 0.7, 1
+    
+    BoxLayout:
+        id: chart_layout
+        orientation: 'vertical'
+        size_hint: 1, 1
