@@ -53,10 +53,24 @@ from ui_components import (
 )
 from visualization import VisualizationTab
 from pagination_utils import get_transaction_count, PaginationInfo
+from async_utils import AsyncDatabaseOperation, LoadingIndicator
+from kv_components import (
+    DateInputLayout,
+    SearchFilterLayout,
+    TransactionGrid,
+    PaginationControls,
+    VisualizationContent as KvVisualizationContent
+)
+from config_manager import config_manager, SettingsPopup
 
 # Constants
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 UNICODE_FONT_PATH = os.path.join(SCRIPT_DIR, "fonts", "NotoSansCJKtc-Regular.otf")
+
+# Load Kivy Language file
+KV_FILE = os.path.join(SCRIPT_DIR, "mmex_app.kv")
+if os.path.exists(KV_FILE):
+    Builder.load_file(KV_FILE)
 
 class UIConstants:
     """UI constants for consistent styling and behavior."""
@@ -114,9 +128,12 @@ class MMEXAppLayout(BoxLayout):
         
         # Initialize pagination state
         self.current_page = 1
-        self.page_size = 50  # Default page size
+        self.page_size = config_manager.get_config().page_size  # Use config value
         self.total_count = 0
         self.pagination_info = None
+        
+        # Initialize async loading
+        self.loading_indicator = LoadingIndicator()
 
         # Create UI components
         self._create_date_inputs()
@@ -492,42 +509,80 @@ class MMEXAppLayout(BoxLayout):
         self.tab_panel.add_widget(self.visualization_tab)
 
     def _create_exit_button(self):
-        """Create responsive exit button."""
+        """Create responsive exit and settings buttons."""
         self.exit_layout = BoxLayout(size_hint=(1, None), height=40, spacing=self.spacing)
 
         if self.is_mobile:
-            # On mobile, make exit button full width for easier tapping
-            exit_button = Button(
-                text="Exit Application", size_hint=(1, 1), background_color=BUTTON_COLOR
+            # On mobile, create two buttons side by side
+            settings_button = Button(
+                text="Settings", size_hint=(0.5, 1), background_color=(0.2, 0.6, 1, 1)
             )
+            exit_button = Button(
+                text="Exit", size_hint=(0.5, 1), background_color=BUTTON_COLOR
+            )
+            settings_button.bind(on_release=self.open_settings)
+            exit_button.bind(on_release=self.exit_app)
+            self.exit_layout.add_widget(settings_button)
+            self.exit_layout.add_widget(exit_button)
         else:
             # Add spacer on larger screens
-            self.exit_layout.add_widget(Widget(size_hint=(0.8, 1)))
+            self.exit_layout.add_widget(Widget(size_hint=(0.6, 1)))
+            
+            # Settings button
+            settings_button = Button(
+                text="Settings", size_hint=(0.2, 1), background_color=(0.2, 0.6, 1, 1)
+            )
+            settings_button.bind(on_release=self.open_settings)
+            self.exit_layout.add_widget(settings_button)
+            
             # Exit button
             exit_button = Button(
                 text="Exit", size_hint=(0.2, 1), background_color=BUTTON_COLOR
             )
-        
-        exit_button.bind(on_release=self.exit_app)
-        self.exit_layout.add_widget(exit_button)
+            exit_button.bind(on_release=self.exit_app)
+            self.exit_layout.add_widget(exit_button)
 
         self.add_widget(self.exit_layout)
 
     def load_account_specific_tabs(self):
-        """Load account-specific tabs."""
-        error, accounts_df = get_all_accounts(self.db_path)
-
+        """Load account-specific tabs asynchronously."""
+        # Show loading indicator on the main status
+        if hasattr(self, 'all_transactions_status'):
+            self.loading_indicator.show(self.all_transactions_status, "Loading accounts...")
+        
+        # Create async operation for getting accounts
+        accounts_operation = AsyncDatabaseOperation(
+            target_func=get_all_accounts,
+            args=(self.db_path,),
+            success_callback=self._on_accounts_loaded,
+            error_callback=self._on_accounts_error
+        )
+        accounts_operation.start()
+        
+    def _on_accounts_loaded(self, result):
+        """Handle successful accounts loading."""
+        error, accounts_df = result
+        
         if error:
-            show_popup("Error", error)
+            self._on_accounts_error(error)
             return
-
+            
         if accounts_df is None or accounts_df.empty:
+            self.loading_indicator.hide()
             show_popup("No Accounts", "No accounts found in the database.")
             return
 
         # Create a tab for each account
         for _, account in accounts_df.iterrows():
             self._create_account_tab(account)
+            
+        # Hide loading indicator
+        self.loading_indicator.hide()
+        
+    def _on_accounts_error(self, error):
+        """Handle accounts loading error."""
+        self.loading_indicator.hide()
+        show_popup("Error", error)
 
     def _create_account_tab(self, account):
         """Create a tab for a specific account."""
@@ -857,36 +912,73 @@ class MMEXAppLayout(BoxLayout):
         self.page_input.text = str(self.current_page)
 
     def _load_paginated_data(self):
-        """Load paginated transaction data."""
+        """Load paginated transaction data asynchronously."""
         start_date_str = self.start_date_input.get_date() if hasattr(self.start_date_input, 'get_date') else self.start_date_input.text
         end_date_str = self.end_date_input.get_date() if hasattr(self.end_date_input, 'get_date') else self.end_date_input.text
 
-        # Get total count first
-        error, self.total_count = get_transaction_count(
-            self.db_path, start_date_str, end_date_str
+        # Show loading indicator
+        self.loading_indicator.show(self.all_transactions_status, "Loading transactions...")
+        
+        # Create async operation for getting transaction count
+        count_operation = AsyncDatabaseOperation(
+            target_func=get_transaction_count,
+            args=(self.db_path, start_date_str, end_date_str),
+            success_callback=self._on_count_loaded,
+            error_callback=self._on_count_error
         )
+        count_operation.start()
+
+    def _on_count_loaded(self, result):
+        """Handle successful transaction count loading."""
+        error, self.total_count = result
         
         if error:
-            show_popup("Error", f"Error getting transaction count: {error}")
+            self._on_count_error(error)
             return
-
+            
         # Create pagination info
         self.pagination_info = PaginationInfo(self.total_count, self.page_size, self.current_page)
-
-        # Get paginated transactions
-        error, self.all_transactions_df = get_transactions(
-            self.db_path, start_date_str, end_date_str, 
-            page_size=self.page_size, page_number=self.current_page
+        
+        # Now load the actual transactions
+        start_date_str = self.start_date_input.get_date() if hasattr(self.start_date_input, 'get_date') else self.start_date_input.text
+        end_date_str = self.end_date_input.get_date() if hasattr(self.end_date_input, 'get_date') else self.end_date_input.text
+        
+        transactions_operation = AsyncDatabaseOperation(
+            target_func=get_transactions,
+            args=(self.db_path, start_date_str, end_date_str, self.page_size, self.current_page),
+            success_callback=self._on_transactions_loaded,
+            error_callback=self._on_transactions_error
         )
-
+        transactions_operation.start()
+        
+    def _on_count_error(self, error):
+        """Handle transaction count loading error."""
+        self.loading_indicator.hide()
+        show_popup("Error", f"Error getting transaction count: {error}")
+        
+    def _on_transactions_loaded(self, result):
+        """Handle successful transactions loading."""
+        error, self.all_transactions_df = result
+        
         if error:
-            show_popup("Error", error)
-            self.all_transactions_df = pd.DataFrame()
-
+            self._on_transactions_error(error)
+            return
+            
         # Apply search filter to paginated data
         self._apply_search_filter()
         
         # Update pagination controls
+        self._update_pagination_controls()
+        
+        # Hide loading indicator
+        self.loading_indicator.hide()
+        
+    def _on_transactions_error(self, error):
+        """Handle transactions loading error."""
+        self.loading_indicator.hide()
+        show_popup("Error", error)
+        self.all_transactions_df = pd.DataFrame()
+        self._apply_search_filter()
         self._update_pagination_controls()
         
 
@@ -906,6 +998,11 @@ class MMEXAppLayout(BoxLayout):
     def exit_app(self, instance):
         """Exit the application."""
         App.get_running_app().stop()
+
+    def open_settings(self, instance):
+        """Open the settings configuration popup."""
+        settings_popup = SettingsPopup(config_manager)
+        settings_popup.open()
 
 
 class MMEXKivyApp(App):
