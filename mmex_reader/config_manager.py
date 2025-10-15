@@ -83,7 +83,8 @@ class ConfigManager:
         # Load database path from .env if not set in config
         if not self.config.db_file_path:
             from db_utils import load_db_path
-            env_db_path = load_db_path()
+            # Avoid initializing connection pool during config loading to prevent side effects
+            env_db_path = load_db_path(initialize_pool=False)
             if env_db_path:
                 self.config.db_file_path = env_db_path
     
