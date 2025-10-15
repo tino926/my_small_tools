@@ -34,7 +34,10 @@ from error_handling import handle_database_query, validate_date_format, validate
 logger = logging.getLogger(__name__)
 
 # Configuration constants
-DB_PATH_ENV_VAR: str = "MMEX_DB_PATH"
+# Primary env var name for DB path (prefer consistent with README and .env)
+DB_PATH_PRIMARY_ENV: str = "DB_FILE_PATH"
+# Legacy/secondary env var maintained for backward compatibility
+DB_PATH_SECONDARY_ENV: str = "MMEX_DB_PATH"
 DEFAULT_LOG_LEVEL: str = "INFO"
 
 # Connection pool configuration
@@ -90,8 +93,10 @@ class DatabaseConfig:
         self.log_level: str = DEFAULT_LOG_LEVEL
     
     def load_from_env(self) -> None:
-        """Load configuration from environment variables."""
-        self.db_path = os.getenv(DB_PATH_ENV_VAR)
+        """Load configuration from environment variables.
+        Prefer `DB_FILE_PATH`, fallback to `MMEX_DB_PATH` for compatibility.
+        """
+        self.db_path = os.getenv(DB_PATH_PRIMARY_ENV) or os.getenv(DB_PATH_SECONDARY_ENV)
         self.max_connections = int(os.getenv("MMEX_MAX_CONNECTIONS", MAX_CONNECTIONS))
         self.connection_timeout = int(os.getenv("MMEX_CONNECTION_TIMEOUT", CONNECTION_TIMEOUT))
         self.query_timeout = int(os.getenv("MMEX_QUERY_TIMEOUT", DEFAULT_QUERY_TIMEOUT))
@@ -317,32 +322,97 @@ class ConnectionPool:
 # Global connection pool instance
 _connection_pool = ConnectionPool()
 
+def _resolve_db_path(preferred_path: Optional[str] = None) -> Optional[str]:
+    """Resolve the best available database path with clear priority.
 
-def load_db_path() -> Optional[str]:
-    """Load the database path from environment variables or .env file.
+    Priority:
+    1) `preferred_path` argument if provided
+    2) `config_manager.AppConfig.db_file_path` (if available)
+    3) Environment `DB_FILE_PATH`
+    4) Environment `MMEX_DB_PATH` (legacy)
+    5) `.env` file located next to this module
 
     Returns:
-        Optional[str]: The database path if found, None otherwise.
+        Optional[str]: Resolved path string if found, else None
     """
     try:
-        # Try to get from environment variable first
-        db_path = os.getenv(DB_PATH_ENV_VAR)
+        # 1) explicit preferred path
+        if preferred_path:
+            return preferred_path
+
+        # 2) config_manager (optional dependency)
+        try:
+            from config_manager import config_manager  # local import to avoid hard dependency at import time
+            cfg = config_manager.get_config()
+            if getattr(cfg, 'db_file_path', None):
+                return cfg.db_file_path
+        except Exception:
+            # Swallow import/config errors; continue to env fallbacks
+            pass
+
+        # 3) primary env var
+        db_path = os.getenv(DB_PATH_PRIMARY_ENV)
         if db_path:
-            logger.info(f"Database path loaded from environment variable: {db_path}")
             return db_path
 
-        # Try to load from .env file
+        # 4) secondary/legacy env var
+        db_path = os.getenv(DB_PATH_SECONDARY_ENV)
+        if db_path:
+            return db_path
+
+        # 5) .env file next to this module
         env_file_path = os.path.join(os.path.dirname(__file__), '.env')
         if os.path.exists(env_file_path):
             load_dotenv(env_file_path)
-            db_path = os.getenv(DB_PATH_ENV_VAR)
+            db_path = os.getenv(DB_PATH_PRIMARY_ENV) or os.getenv(DB_PATH_SECONDARY_ENV)
             if db_path:
-                logger.info(f"Database path loaded from .env file: {db_path}")
                 return db_path
 
-        logger.warning(f"Database path not found in environment variable '{DB_PATH_ENV_VAR}' or .env file")
+        return None
+    except Exception as e:
+        logger.error(f"Error resolving database path: {e}")
         return None
 
+
+def load_db_path(db_path: Optional[str] = None, initialize_pool: bool = True) -> Optional[str]:
+    """Load and optionally initialize the database path for the connection pool.
+
+    This function is backward-compatible with prior usage where it returned the
+    path only. It now also supports passing a `db_path` argument and can
+    initialize the connection pool with the resolved path.
+
+    Args:
+        db_path: Optional preferred database path to use.
+        initialize_pool: Whether to initialize the connection pool with the path.
+
+    Returns:
+        Optional[str]: The resolved database path if found and valid, else None.
+    """
+    try:
+        resolved_path = _resolve_db_path(db_path)
+
+        if not resolved_path:
+            logger.warning(
+                "Database path not found in config, environment ('%s'/'%s'), or .env file",
+                DB_PATH_PRIMARY_ENV,
+                DB_PATH_SECONDARY_ENV,
+            )
+            return None
+
+        # Validate existence
+        if not os.path.exists(resolved_path):
+            logger.error(f"Database file not found: {resolved_path}")
+            return None
+
+        if initialize_pool:
+            try:
+                _connection_pool.initialize(resolved_path)
+            except Exception as init_err:
+                logger.error(f"Failed to initialize connection pool: {init_err}")
+                return None
+
+        logger.info(f"Database path resolved: {resolved_path}")
+        return resolved_path
     except Exception as e:
         logger.error(f"Error loading database path: {e}")
         return None
