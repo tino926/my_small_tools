@@ -8,7 +8,7 @@ import logging
 from typing import Optional, Tuple
 import pandas as pd
 
-from error_handling import handle_database_operation
+from error_handling import handle_database_query
 from db_utils import (
     TRANSACTION_TABLE, ACCOUNT_TABLE, CATEGORY_TABLE, 
     SUBCATEGORY_TABLE, PAYEE_TABLE, _connection_pool
@@ -70,14 +70,9 @@ def get_transaction_count(db_path: str, start_date_str: Optional[str] = None,
             query += " AND t.TRANSDATE <= ?"
             params.append(end_date_str)
 
-        # Execute count query
-        def execute_count_query():
-            cursor = conn.cursor()
-            cursor.execute(query, params)
-            result = cursor.fetchone()
-            return result[0] if result else 0
-
-        error, total_count = handle_database_operation(execute_count_query)
+        # Execute count query using standardized query handler
+        error, rows = handle_database_query(conn, query, params, return_dataframe=False)
+        total_count = rows[0][0] if rows else 0
         if error:
             logger.error(f"Error getting transaction count: {error}")
             return error, 0
