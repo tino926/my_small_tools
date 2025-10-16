@@ -186,11 +186,21 @@ def handle_database_query(conn: sqlite3.Connection, query: str, params: Optional
             result = pd.read_sql_query(query, conn, params=params or [])
             logger.debug(DEBUG_MSG_QUERY_SUCCESS_DF.format(count=len(result)))
         else:
-            cursor = conn.cursor()
-            cursor.execute(query, params or [])
-            result = cursor.fetchall()
-            logger.debug(DEBUG_MSG_QUERY_SUCCESS_LIST.format(count=len(result)))
-        return None, result
+            cursor = None
+            try:
+                cursor = conn.cursor()
+                cursor.execute(query, params or [])
+                result = cursor.fetchall()
+                logger.debug(DEBUG_MSG_QUERY_SUCCESS_LIST.format(count=len(result)))
+                return None, result
+            finally:
+                # Ensure cursor is closed to avoid resource leaks
+                try:
+                    if cursor is not None:
+                        cursor.close()
+                except Exception as close_err:
+                    # Non-critical: log at debug level and continue
+                    logger.debug(f"Non-critical error closing cursor: {close_err}")
     except sqlite3.Error as e:
         error_msg = DEFAULT_ERROR_MESSAGES['database_error'].format(error=e)
         logger.error(f"SQLite error executing query: {e}")
