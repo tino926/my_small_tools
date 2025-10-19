@@ -14,21 +14,58 @@ logger = logging.getLogger(__name__)
 
 
 class AsyncDatabaseOperation:
-    """Handles asynchronous database operations with UI callbacks."""
-    
-    def __init__(self):
+    """Handles asynchronous database operations with UI callbacks.
+
+    Compatible with two usage styles:
+    - Direct call: AsyncDatabaseOperation().execute_async(func, on_success=..., ...)
+    - Builder style: AsyncDatabaseOperation(target_func=..., args=(...), success_callback=..., error_callback=...).start()
+    """
+
+    def __init__(
+        self,
+        target_func: Optional[Callable] = None,
+        args: Optional[tuple] = None,
+        kwargs: Optional[dict] = None,
+        success_callback: Optional[Callable] = None,
+        error_callback: Optional[Callable] = None,
+        start_callback: Optional[Callable] = None,
+        complete_callback: Optional[Callable] = None,
+    ):
         self.is_running = False
         self.current_thread = None
-    
-    def execute_async(self, 
-                     operation: Callable,
-                     on_success: Optional[Callable] = None,
-                     on_error: Optional[Callable] = None,
-                     on_start: Optional[Callable] = None,
-                     on_complete: Optional[Callable] = None,
-                     *args, **kwargs):
+        # Stored configuration for builder-style usage
+        self._target_func = target_func
+        self._args = args or ()
+        self._kwargs = kwargs or {}
+        self._success_cb = success_callback
+        self._error_cb = error_callback
+        self._start_cb = start_callback
+        self._complete_cb = complete_callback
+
+    def _schedule_cb(self, cb: Optional[Callable], *cb_args, **cb_kwargs):
+        if not cb:
+            return
+
+        def _wrapper(dt):
+            try:
+                cb(*cb_args, **cb_kwargs)
+            except Exception as e:
+                logger.error(f"Error in scheduled callback {getattr(cb, '__name__', cb)}: {e}")
+
+        Clock.schedule_once(_wrapper, 0)
+
+    def execute_async(
+        self,
+        operation: Callable,
+        on_success: Optional[Callable] = None,
+        on_error: Optional[Callable] = None,
+        on_start: Optional[Callable] = None,
+        on_complete: Optional[Callable] = None,
+        *args,
+        **kwargs,
+    ):
         """Execute a database operation asynchronously.
-        
+
         Args:
             operation: The database operation function to execute
             on_success: Callback for successful operation (called with result)
@@ -40,43 +77,55 @@ class AsyncDatabaseOperation:
         if self.is_running:
             logger.warning("Another async operation is already running")
             return
-        
+
         self.is_running = True
-        
+
         # Call start callback on main thread
-        if on_start:
-            Clock.schedule_once(lambda dt: on_start(), 0)
-        
+        self._schedule_cb(on_start)
+
         def worker():
             """Worker function that runs in background thread."""
             try:
-                logger.debug(f"Starting async operation: {operation.__name__}")
+                op_name = getattr(operation, "__name__", str(operation))
+                logger.debug(f"Starting async operation: {op_name}")
                 result = operation(*args, **kwargs)
-                
+
                 # Schedule success callback on main thread
-                if on_success:
-                    Clock.schedule_once(lambda dt: on_success(result), 0)
-                    
+                self._schedule_cb(on_success, result)
+
             except Exception as e:
                 error_msg = str(e)
                 logger.error(f"Async operation failed: {error_msg}")
-                
+
                 # Schedule error callback on main thread
-                if on_error:
-                    Clock.schedule_once(lambda dt: on_error(error_msg), 0)
-                    
+                self._schedule_cb(on_error, error_msg)
+
             finally:
                 # Mark operation as complete
                 self.is_running = False
-                
+
                 # Schedule complete callback on main thread
-                if on_complete:
-                    Clock.schedule_once(lambda dt: on_complete(), 0)
-        
+                self._schedule_cb(on_complete)
+
         # Start the worker thread
         self.current_thread = threading.Thread(target=worker, daemon=True)
         self.current_thread.start()
-    
+
+    def start(self):
+        """Start the operation using stored builder-style configuration."""
+        if not callable(self._target_func):
+            logger.error("No target_func provided to AsyncDatabaseOperation.start()")
+            return
+        return self.execute_async(
+            self._target_func,
+            on_success=self._success_cb,
+            on_error=self._error_cb,
+            on_start=self._start_cb,
+            on_complete=self._complete_cb,
+            *self._args,
+            **self._kwargs,
+        )
+
     def cancel(self):
         """Cancel the current operation if possible."""
         if self.is_running and self.current_thread:
@@ -127,32 +176,63 @@ def async_database_operation(on_success=None, on_error=None, on_start=None, on_c
 
 
 class LoadingIndicator:
-    """Manages loading indicators for async operations."""
-    
-    def __init__(self, widget, loading_text="Loading..."):
+    """Manages loading indicators for async operations.
+
+    Supports both pre-bound widget and dynamic widget per show() call.
+    """
+
+    def __init__(self, widget: Optional[Any] = None, loading_text: str = "Loading..."):
         self.widget = widget
         self.loading_text = loading_text
         self.original_text = None
         self.is_loading = False
-    
-    def show(self):
-        """Show loading indicator."""
+
+    def show(self, widget: Optional[Any] = None, loading_text: Optional[str] = None):
+        """Show loading indicator.
+
+        Args:
+            widget: Optional widget to apply indicator to (overrides pre-bound)
+            loading_text: Optional loading text to display
+        """
         if not self.is_loading:
+            # Allow dynamic binding per call
+            if widget is not None:
+                self.widget = widget
+            if loading_text is not None:
+                self.loading_text = loading_text
+
+            if self.widget is None:
+                logger.debug("LoadingIndicator.show() called without a widget")
+                return
+
             if hasattr(self.widget, 'text'):
-                self.original_text = self.widget.text
-                self.widget.text = self.loading_text
+                self.original_text = getattr(self.widget, 'text', None)
+                try:
+                    self.widget.text = self.loading_text
+                except Exception as e:
+                    logger.debug(f"Could not set widget.text: {e}")
             elif hasattr(self.widget, 'disabled'):
-                self.widget.disabled = True
+                try:
+                    self.widget.disabled = True
+                except Exception as e:
+                    logger.debug(f"Could not set widget.disabled: {e}")
             self.is_loading = True
             logger.debug("Loading indicator shown")
-    
+
     def hide(self):
         """Hide loading indicator."""
         if self.is_loading:
-            if hasattr(self.widget, 'text') and self.original_text is not None:
-                self.widget.text = self.original_text
-            elif hasattr(self.widget, 'disabled'):
-                self.widget.disabled = False
+            if self.widget is not None:
+                if hasattr(self.widget, 'text') and self.original_text is not None:
+                    try:
+                        self.widget.text = self.original_text
+                    except Exception as e:
+                        logger.debug(f"Could not restore widget.text: {e}")
+                elif hasattr(self.widget, 'disabled'):
+                    try:
+                        self.widget.disabled = False
+                    except Exception as e:
+                        logger.debug(f"Could not restore widget.disabled: {e}")
             self.is_loading = False
             self.original_text = None
             logger.debug("Loading indicator hidden")
