@@ -736,36 +736,47 @@ def get_transactions(db_path: str, start_date_str: Optional[str] = None,
             logger.error(f"Error retrieving transactions: {error}")
             return error, pd.DataFrame()
 
-        # Optimize tag retrieval with a single query instead of N+1 queries
+        # Optimize tag retrieval with batched queries to avoid SQLite parameter limits
         if not transactions_df.empty:
-            # Get all tags for all transactions in one query
             transaction_ids = transactions_df['TRANSID'].tolist()
-            placeholders = ','.join(['?' for _ in transaction_ids])
-            
-            tag_query = f"""
-            SELECT tl.REFID as TRANSID, t.TAGNAME
-            FROM {TAG_TABLE} t
-            JOIN {TAGLINK_TABLE} tl ON t.TAGID = tl.TAGID
-            WHERE tl.REFID IN ({placeholders}) AND tl.REFTYPE = 'Transaction'
-            ORDER BY tl.REFID, t.TAGNAME
-            """
-            
-            tag_error, tags_df = handle_database_query(conn, tag_query, transaction_ids)
-            
-            # Create a dictionary mapping transaction IDs to their tags
-            tags_dict = {}
-            if not tag_error and not tags_df.empty:
-                for _, tag_row in tags_df.iterrows():
-                    trans_id = tag_row['TRANSID']
-                    tag_name = tag_row['TAGNAME']
-                    if trans_id not in tags_dict:
-                        tags_dict[trans_id] = []
-                    tags_dict[trans_id].append(tag_name)
-            
-            # Add tags column and populate it efficiently
-            transactions_df['TAGS'] = transactions_df['TRANSID'].apply(
-                lambda trans_id: ', '.join(tags_dict.get(trans_id, []))
-            )
+
+            # If no IDs, set empty TAGS and skip
+            if not transaction_ids:
+                transactions_df['TAGS'] = ''
+            else:
+                # SQLite default max host parameters is 999; keep a safe margin
+                BATCH_SIZE = 900
+                tags_dict = {}
+
+                for i in range(0, len(transaction_ids), BATCH_SIZE):
+                    batch_ids = transaction_ids[i:i + BATCH_SIZE]
+                    placeholders = ','.join(['?' for _ in batch_ids])
+                    tag_query = f"""
+                    SELECT tl.REFID as TRANSID, t.TAGNAME
+                    FROM {TAG_TABLE} t
+                    JOIN {TAGLINK_TABLE} tl ON t.TAGID = tl.TAGID
+                    WHERE tl.REFID IN ({placeholders}) AND tl.REFTYPE = 'Transaction'
+                    ORDER BY tl.REFID, t.TAGNAME
+                    """
+
+                    tag_error, tags_df = handle_database_query(conn, tag_query, batch_ids)
+                    if tag_error:
+                        # Log and continue with next batch rather than failing the entire operation
+                        logger.warning(f"Tag query batch failed: {tag_error}")
+                        continue
+
+                    if not tags_df.empty:
+                        for _, tag_row in tags_df.iterrows():
+                            trans_id = tag_row['TRANSID']
+                            tag_name = tag_row['TAGNAME']
+                            if trans_id not in tags_dict:
+                                tags_dict[trans_id] = []
+                            tags_dict[trans_id].append(tag_name)
+
+                # Populate TAGS column by mapping collected tags
+                transactions_df['TAGS'] = transactions_df['TRANSID'].apply(
+                    lambda trans_id: ', '.join(tags_dict.get(trans_id, []))
+                )
         else:
             transactions_df['TAGS'] = ''
 
