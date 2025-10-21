@@ -556,6 +556,8 @@ class MMEXReader:
 def main() -> None:
     """Main entry point for command-line usage."""
     try:
+        # Ensure .env variables are loaded before reading environment
+        load_dotenv()
         # Create configuration from environment
         config = MMEXReaderConfig.from_env()
         
