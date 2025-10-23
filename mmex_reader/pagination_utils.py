@@ -8,7 +8,7 @@ import logging
 from typing import Optional, Tuple
 import pandas as pd
 
-from error_handling import handle_database_query
+from error_handling import handle_database_query, validate_date_format, validate_date_range
 from db_utils import (
     TRANSACTION_TABLE, ACCOUNT_TABLE, CATEGORY_TABLE, 
     SUBCATEGORY_TABLE, PAYEE_TABLE, _connection_pool
@@ -36,6 +36,26 @@ def get_transaction_count(db_path: str, start_date_str: Optional[str] = None,
     if not db_path:
         logger.error("Invalid database path provided")
         return "Invalid database path", 0
+
+    # Validate date formats and range before executing query
+    try:
+        if start_date_str:
+            if not validate_date_format(start_date_str, "start_date"):
+                logger.error(f"Invalid start_date format: {start_date_str}")
+                return f"Invalid start_date format: {start_date_str}. Expected format: YYYY-MM-DD", 0
+
+        if end_date_str:
+            if not validate_date_format(end_date_str, "end_date"):
+                logger.error(f"Invalid end_date format: {end_date_str}")
+                return f"Invalid end_date format: {end_date_str}. Expected format: YYYY-MM-DD", 0
+
+        if start_date_str and end_date_str:
+            if not validate_date_range(start_date_str, end_date_str):
+                logger.error(f"Invalid date range: {start_date_str} to {end_date_str}")
+                return f"Invalid date range: start date {start_date_str} must be before or equal to end date {end_date_str}", 0
+    except Exception as e:
+        logger.error(f"Unexpected error validating dates: {e}")
+        return f"Unexpected error validating dates: {e}", 0
 
     conn = None
     try:
