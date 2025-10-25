@@ -62,6 +62,7 @@ from kv_components import (
     VisualizationContent as KvVisualizationContent
 )
 from config_manager import config_manager, SettingsPopup
+from error_handling import is_valid_date_format
 
 # Constants
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -353,19 +354,8 @@ class MMEXAppLayout(BoxLayout):
         self.add_widget(self.date_layout)
 
     def _validate_date(self, date_str):
-        """Validate date string format.
-        
-        Args:
-            date_str: Date string to validate
-            
-        Returns:
-            bool: True if valid, False otherwise
-        """
-        try:
-            datetime.strptime(date_str, UIConstants.DATE_FORMAT)
-            return True
-        except ValueError:
-            return False
+        """Validate date string format with unified boolean helper."""
+        return bool(is_valid_date_format(date_str, "date"))
     
     def _on_date_change(self, instance, value):
         """Trigger the global query when the date changes, with validation."""
