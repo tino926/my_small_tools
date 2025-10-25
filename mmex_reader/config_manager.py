@@ -101,11 +101,67 @@ class ConfigManager:
         return self.config
     
     def update_config(self, **kwargs) -> None:
-        """Update configuration with new values."""
+        """Update configuration with new values, with validation."""
+        self._validate_updates(kwargs)
         for key, value in kwargs.items():
             if hasattr(self.config, key):
                 setattr(self.config, key, value)
         self.save_config()
+
+    def _validate_updates(self, updates: Dict[str, Any]) -> None:
+        """Validate incoming configuration updates and raise on invalid values."""
+        errors = []
+        # Allowed option sets
+        allowed_theme_modes = ("light", "dark")
+        allowed_export_formats = ("csv", "json", "pdf")
+        allowed_chart_types = ("Monthly Spending", "Category Distribution", "Account Balance", "Income vs Expense")
+        allowed_color_schemes = ("default", "pastel", "bright", "monochrome")
+        # Numeric fields must be positive integers
+        numeric_positive_keys = (
+            "page_size",
+            "default_font_size",
+            "default_date_range_days",
+            "cache_timeout_minutes",
+            "max_cache_size_mb",
+        )
+        for key in numeric_positive_keys:
+            if key in updates:
+                val = updates[key]
+                if not isinstance(val, int) or val <= 0:
+                    errors.append(f"{key} must be a positive integer")
+        # db_file_path must exist if provided
+        if "db_file_path" in updates:
+            db_path = updates["db_file_path"]
+            if not isinstance(db_path, str) or not db_path:
+                errors.append("db_file_path must be a non-empty string")
+            else:
+                import os as _os
+                if not _os.path.exists(db_path):
+                    errors.append(f"Database file not found: {db_path}")
+        # export_directory must be an existing directory if provided
+        if "export_directory" in updates:
+            export_dir = updates["export_directory"]
+            if export_dir:
+                import os as _os
+                if not _os.path.isdir(export_dir):
+                    errors.append(f"Export directory not found: {export_dir}")
+        # date_format must be non-empty string
+        if "date_format" in updates:
+            dfmt = updates["date_format"]
+            if not isinstance(dfmt, str) or not dfmt.strip():
+                errors.append("date_format must be a non-empty string")
+        # Enum-like options
+        if "theme_mode" in updates and updates["theme_mode"] not in allowed_theme_modes:
+            errors.append(f"theme_mode must be one of {allowed_theme_modes}")
+        if "default_export_format" in updates and updates["default_export_format"] not in allowed_export_formats:
+            errors.append(f"default_export_format must be one of {allowed_export_formats}")
+        if "default_chart_type" in updates and updates["default_chart_type"] not in allowed_chart_types:
+            errors.append(f"default_chart_type must be one of {allowed_chart_types}")
+        if "chart_color_scheme" in updates and updates["chart_color_scheme"] not in allowed_color_schemes:
+            errors.append(f"chart_color_scheme must be one of {allowed_color_schemes}")
+        # Raise if any problems
+        if errors:
+            raise ValueError("; ".join(errors))
 
 
 class SettingsPopup(Popup):
