@@ -33,6 +33,8 @@ __all__ = [
     'handle_database_query', 
     'validate_date_format',
     'validate_date_range',
+    'is_valid_date_format',
+    'is_valid_date_range',
     'DATE_FORMAT',
     'DEFAULT_ERROR_MESSAGES'
 ]
@@ -322,3 +324,45 @@ def validate_date_range(start_date_str: str, end_date_str: str) -> Optional[str]
     error_msg = ERROR_MSG_UNEXPECTED_RANGE_VALIDATION
     logger.error(error_msg)
     return error_msg
+
+
+def is_valid_date_format(date_str: str, date_name: str = "date") -> bool:
+    """Return True/False for date format validity (YYYY-MM-DD).
+
+    Convenience wrapper around validate_date_format for callers expecting
+    boolean semantics. Logs internally and never raises.
+
+    Args:
+        date_str: Date string to validate.
+        date_name: Field name for logging context.
+
+    Returns:
+        bool: True if date_str is valid or empty (treated as valid), False otherwise.
+    """
+    try:
+        error, _ = validate_date_format(date_str, date_name)
+        return error is None
+    except Exception as e:
+        logger.error(DEFAULT_ERROR_MESSAGES['unexpected_error'].format(error=e))
+        return False
+
+
+def is_valid_date_range(start_date_str: str, end_date_str: str) -> bool:
+    """Return True/False for date range validity (start <= end).
+
+    Convenience wrapper around validate_date_range for callers expecting
+    boolean semantics. Logs internally and never raises.
+
+    Args:
+        start_date_str: Start date string.
+        end_date_str: End date string.
+
+    Returns:
+        bool: True if range is valid or one/both dates empty (treated as valid), False otherwise.
+    """
+    try:
+        error = validate_date_range(start_date_str, end_date_str)
+        return error is None
+    except Exception as e:
+        logger.error(DEFAULT_ERROR_MESSAGES['unexpected_error'].format(error=e))
+        return False
