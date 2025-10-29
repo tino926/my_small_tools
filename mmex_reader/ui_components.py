@@ -46,7 +46,7 @@ import calendar
 
 # Local imports
 try:
-    from error_handling import handle_database_operation
+    from error_handling import handle_database_operation, is_valid_date_format
 except ImportError:
     # Fallback if error_handling module is not available
     def handle_database_operation(func, *args, **kwargs):
@@ -1461,19 +1461,9 @@ class TransactionDetailsPopup(BaseUIComponent):
             return False, ["Validation error occurred"]
     
     def _validate_date_format(self, date_str):
-        """Validate date format."""
+        """Validate date format using shared error_handling helper."""
         try:
-            from datetime import datetime
-            # Try common date formats
-            date_formats = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%Y/%m/%d']
-            
-            for fmt in date_formats:
-                try:
-                    datetime.strptime(date_str, fmt)
-                    return True
-                except ValueError:
-                    continue
-            return False
+            return bool(is_valid_date_format(date_str, "TRANSDATE"))
         except Exception:
             return False
     
