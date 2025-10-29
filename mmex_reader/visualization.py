@@ -91,37 +91,38 @@ def validate_dataframe(df, required_columns=None, min_rows=1):
 
 
 def safe_numeric_conversion(series, column_name):
-    """Safely convert series to numeric values.
+    """Safely convert series to numeric values while preserving row alignment.
     
     Args:
         series: Pandas series to convert
         column_name: Name of the column for error reporting
         
     Returns:
-        Converted numeric series
+        Converted numeric series (same index as input)
         
     Raises:
-        DataValidationError: If conversion fails
+        DataValidationError: If all values are non-numeric
     """
     try:
-        # Try to convert to numeric, coercing errors to NaN
+        # Convert to numeric, coercing errors to NaN, and preserve original index
         numeric_series = pd.to_numeric(series, errors='coerce')
         
-        # Check if any values couldn't be converted
-        nan_count = numeric_series.isnull().sum()
+        # Log non-numeric conversions
+        nan_count = numeric_series.isna().sum()
         if nan_count > 0:
-            logger.warning(f"Column '{column_name}' has {nan_count} non-numeric values that were converted to NaN")
+            logger.warning(
+                f"Column '{column_name}' has {nan_count} non-numeric values converted to NaN"
+            )
         
-        # Remove NaN values
-        numeric_series = numeric_series.dropna()
-        
-        if numeric_series.empty:
+        # If all values are NaN after conversion, raise a validation error
+        if numeric_series.notna().sum() == 0:
             raise DataValidationError(f"No valid numeric data in column '{column_name}'")
         
         return numeric_series
-        
     except Exception as e:
-        raise DataValidationError(f"Failed to convert column '{column_name}' to numeric: {str(e)}")
+        raise DataValidationError(
+            f"Failed to convert column '{column_name}' to numeric: {str(e)}"
+        )
 
 
 def optimize_chart_data(df, max_categories=10, min_amount_threshold=0.01):
