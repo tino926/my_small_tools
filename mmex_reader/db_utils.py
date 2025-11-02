@@ -374,6 +374,41 @@ def _resolve_db_path(preferred_path: Optional[str] = None) -> Optional[str]:
         return None
 
 
+def _ensure_pool_for_path(db_path: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """Ensure the connection pool is initialized for the provided database path.
+
+    Resolves the effective DB path using existing resolution logic, validates the
+    path, and initializes the pool if it's not yet initialized or points to a
+    different database.
+
+    Args:
+        db_path: Preferred database path or None to resolve via config/env.
+
+    Returns:
+        Tuple of (error_message, resolved_path). If error_message is not None,
+        the operation failed.
+    """
+    try:
+        resolved_path = _resolve_db_path(db_path)
+        if not resolved_path:
+            return "Database path not found in config/env/.env", None
+        if not os.path.exists(resolved_path):
+            return f"Database file not found: {resolved_path}", None
+
+        status = _connection_pool.get_pool_status()
+        current_path = status.get('database_path')
+        if current_path != resolved_path:
+            try:
+                _connection_pool.initialize(resolved_path)
+            except Exception as e:
+                logger.error(f"Failed to initialize connection pool: {e}")
+                return f"Failed to initialize connection pool: {e}", None
+        return None, resolved_path
+    except Exception as e:
+        logger.error(f"Error ensuring connection pool for path: {e}")
+        return f"Error ensuring connection pool for path: {e}", None
+
+
 def load_db_path(db_path: Optional[str] = None, initialize_pool: bool = True) -> Optional[str]:
     """Load and optionally initialize the database path for the connection pool.
 
@@ -618,13 +653,11 @@ def get_transactions(db_path: str, start_date_str: Optional[str] = None,
     Raises:
         ValueError: If the database path is invalid or date formats are incorrect.
     """
-    if not db_path or not isinstance(db_path, str):
-        logger.error("Invalid database path provided")
-        return "Invalid database path", pd.DataFrame()
-        
-    if not os.path.exists(db_path):
-        logger.error(f"Database file not found: {db_path}")
-        return "Database file not found", pd.DataFrame()
+    # Ensure connection pool is initialized for the requested path
+    err, resolved_path = _ensure_pool_for_path(db_path)
+    if err:
+        logger.error(err)
+        return err, pd.DataFrame()
 
     # Validate date strings
     start_date = None
