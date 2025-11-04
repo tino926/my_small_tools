@@ -22,7 +22,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from db_utils import _connection_pool, load_db_path
-from error_handling import handle_database_query, validate_date_format, validate_date_range
+from error_handling import handle_database_query, is_valid_date_format, is_valid_date_range
 
 # Configure logging
 logging.basicConfig(
@@ -76,15 +76,15 @@ class MMEXReaderConfig:
     def _validate_dates(self) -> None:
         """Validate date formats and ranges."""
         # Validate start date format
-        if not validate_date_format(self.start_date, "start_date"):
+        if not is_valid_date_format(self.start_date, "start_date"):
             raise ValueError(f"Invalid start_date format: {self.start_date}. Expected format: {self.date_format}")
         
         # Validate end date format
-        if not validate_date_format(self.end_date, "end_date"):
+        if not is_valid_date_format(self.end_date, "end_date"):
             raise ValueError(f"Invalid end_date format: {self.end_date}. Expected format: {self.date_format}")
         
         # Validate date range
-        if not validate_date_range(self.start_date, self.end_date):
+        if not is_valid_date_range(self.start_date, self.end_date):
             raise ValueError(f"Invalid date range: start date {self.start_date} must be before or equal to end date {self.end_date}")
     
     def _validate_output_format(self) -> None:
