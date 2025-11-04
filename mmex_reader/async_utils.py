@@ -30,9 +30,13 @@ class AsyncDatabaseOperation:
         error_callback: Optional[Callable] = None,
         start_callback: Optional[Callable] = None,
         complete_callback: Optional[Callable] = None,
+        timeout: Optional[float] = None,
     ):
         self.is_running = False
         self.current_thread = None
+        self._completed = False
+        self._timeout = timeout
+        self._timeout_timer = None
         # Stored configuration for builder-style usage
         self._target_func = target_func
         self._args = args or ()
@@ -50,7 +54,7 @@ class AsyncDatabaseOperation:
             try:
                 cb(*cb_args, **cb_kwargs)
             except Exception as e:
-                logger.error(f"Error in scheduled callback {getattr(cb, '__name__', cb)}: {e}")
+                logger.exception(f"Error in scheduled callback {getattr(cb, '__name__', cb)}: {e}")
 
         Clock.schedule_once(_wrapper, 0)
 
@@ -62,6 +66,7 @@ class AsyncDatabaseOperation:
         on_start: Optional[Callable] = None,
         on_complete: Optional[Callable] = None,
         *args,
+        timeout: Optional[float] = None,
         **kwargs,
     ):
         """Execute a database operation asynchronously.
@@ -72,6 +77,7 @@ class AsyncDatabaseOperation:
             on_error: Callback for error handling (called with error message)
             on_start: Callback called when operation starts
             on_complete: Callback called when operation completes (success or error)
+            timeout: Seconds before operation is considered timed out (best-effort)
             *args, **kwargs: Arguments to pass to the operation function
         """
         if self.is_running:
@@ -79,9 +85,28 @@ class AsyncDatabaseOperation:
             return
 
         self.is_running = True
+        self._completed = False
 
         # Call start callback on main thread
         self._schedule_cb(on_start)
+
+        def _on_timeout():
+            if self.is_running and not self._completed:
+                logger.warning("Async operation timed out")
+                self.is_running = False
+                # Notify error and completion on main thread
+                self._schedule_cb(on_error, "Operation timed out")
+                self._schedule_cb(on_complete)
+
+        # Setup timeout timer if provided
+        op_timeout = timeout if timeout is not None else self._timeout
+        if op_timeout and op_timeout > 0:
+            try:
+                self._timeout_timer = threading.Timer(op_timeout, _on_timeout)
+                self._timeout_timer.daemon = True
+                self._timeout_timer.start()
+            except Exception as e:
+                logger.exception(f"Failed to start timeout timer: {e}")
 
         def worker():
             """Worker function that runs in background thread."""
@@ -90,12 +115,13 @@ class AsyncDatabaseOperation:
                 logger.debug(f"Starting async operation: {op_name}")
                 result = operation(*args, **kwargs)
 
-                # Schedule success callback on main thread
-                self._schedule_cb(on_success, result)
+                # Schedule success callback on main thread only if still running
+                if self.is_running and not self._completed:
+                    self._schedule_cb(on_success, result)
 
             except Exception as e:
                 error_msg = str(e)
-                logger.error(f"Async operation failed: {error_msg}")
+                logger.exception(f"Async operation failed: {error_msg}")
 
                 # Schedule error callback on main thread
                 self._schedule_cb(on_error, error_msg)
@@ -103,6 +129,15 @@ class AsyncDatabaseOperation:
             finally:
                 # Mark operation as complete
                 self.is_running = False
+                self._completed = True
+
+                # Cancel timeout timer if any
+                try:
+                    if self._timeout_timer:
+                        self._timeout_timer.cancel()
+                        self._timeout_timer = None
+                except Exception as e:
+                    logger.debug(f"Failed to cancel timeout timer: {e}")
 
                 # Schedule complete callback on main thread
                 self._schedule_cb(on_complete)
@@ -123,6 +158,7 @@ class AsyncDatabaseOperation:
             on_start=self._start_cb,
             on_complete=self._complete_cb,
             *self._args,
+            timeout=self._timeout,
             **self._kwargs,
         )
 
@@ -133,6 +169,12 @@ class AsyncDatabaseOperation:
             # Note: Python threads cannot be forcefully cancelled
             # This just marks the operation as not running
             self.is_running = False
+            try:
+                if self._timeout_timer:
+                    self._timeout_timer.cancel()
+                    self._timeout_timer = None
+            except Exception as e:
+                logger.debug(f"Failed to cancel timeout timer during cancel(): {e}")
 
 
 def async_database_operation(on_success=None, on_error=None, on_start=None, on_complete=None):
@@ -273,7 +315,9 @@ class AsyncQueryManager:
         if loading_widget:
             loading_indicator = LoadingIndicator(loading_widget, loading_text)
             self.loading_indicators[query_id] = loading_indicator
-        
+
+        timeout = kwargs.pop('timeout', None)
+
         def on_start_wrapper():
             if loading_indicator:
                 loading_indicator.show()
@@ -294,9 +338,9 @@ class AsyncQueryManager:
                 del self.active_operations[query_id]
             if query_id in self.loading_indicators:
                 del self.loading_indicators[query_id]
-        
+
         # Create and start async operation
-        async_op = AsyncDatabaseOperation()
+        async_op = AsyncDatabaseOperation(timeout=timeout)
         self.active_operations[query_id] = async_op
         
         async_op.execute_async(
