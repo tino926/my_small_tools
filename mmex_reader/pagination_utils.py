@@ -11,7 +11,7 @@ import pandas as pd
 from error_handling import handle_database_query, validate_date_format, validate_date_range
 from db_utils import (
     TRANSACTION_TABLE, ACCOUNT_TABLE, CATEGORY_TABLE, 
-    SUBCATEGORY_TABLE, PAYEE_TABLE, _connection_pool
+    SUBCATEGORY_TABLE, PAYEE_TABLE, _connection_pool, _ensure_pool_for_path
 )
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,18 @@ def get_transaction_count(db_path: str, start_date_str: Optional[str] = None,
     if not db_path:
         logger.error("Invalid database path provided")
         return "Invalid database path", 0
+
+    # Ensure connection pool is initialized for the provided path
+    init_error = None
+    try:
+        init_error = _ensure_pool_for_path(db_path)
+    except Exception as e:
+        logger.error(f"Unexpected error ensuring pool for path: {e}")
+        return f"Unexpected error ensuring pool for path: {e}", 0
+
+    if init_error:
+        logger.error(f"Database initialization error: {init_error}")
+        return init_error, 0
 
     # Validate date formats and range before executing query
     try:
