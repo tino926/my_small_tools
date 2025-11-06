@@ -187,6 +187,7 @@ def handle_database_query(conn: sqlite3.Connection, query: str, params: Optional
         if return_dataframe:
             result = pd.read_sql_query(query, conn, params=params or [])
             logger.debug(DEBUG_MSG_QUERY_SUCCESS_DF.format(count=len(result)))
+            return None, result
         else:
             cursor = None
             try:
