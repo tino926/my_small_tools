@@ -23,13 +23,15 @@ A comprehensive Kivy-based Python application for reading, analyzing, and visual
 
 ### Technical Features
 - **Modular Architecture**: Clean separation of concerns with dedicated modules:
-  - `db_utils.py`: Database operations and connection pooling
-  - `ui_components.py`: Reusable UI components and widgets
-  - `visualization.py`: Chart generation and data visualization
-  - `error_handling.py`: Centralized error handling and validation
+  - `db_utils.py`: Database operations and connection pooling with optimized SQL queries
+  - `ui_components.py`: Reusable UI components and widgets with consistent styling
+  - `visualization.py`: Chart generation and data visualization with enhanced income/expense analysis
+  - `error_handling.py`: Centralized error handling and validation with detailed logging
+  - `config_manager.py`: Configuration management with validation
+  - `kv_components.py`: Kivy language compatible components
 - **Performance Optimized**: Eliminates N+1 queries, uses SQL aggregation, and implements efficient data loading
 - **Unicode Support**: Configurable fonts for displaying international characters
-- **Robust Error Handling**: Comprehensive error handling with user-friendly feedback
+- **Robust Error Handling**: Comprehensive error handling with user-friendly feedback and detailed error logging
 
 ## Prerequisites
 
@@ -177,18 +179,22 @@ We welcome contributions to improve the MMEX Kivy Reader! Here are some ways you
 
 ### Current Architecture
 The application follows a modular design pattern:
-- **Database Layer** (`db_utils.py`): Handles all database operations with connection pooling
-- **UI Layer** (`ui_components.py`): Reusable UI components and widgets  
-- **Visualization Layer** (`visualization.py`): Chart generation and data visualization
-- **Error Handling** (`error_handling.py`): Centralized error management
+- **Database Layer** (`db_utils.py`): Handles all database operations with connection pooling and optimized SQL queries
+- **UI Layer** (`ui_components.py`): Reusable UI components and widgets with consistent styling  
+- **Visualization Layer** (`visualization.py`): Chart generation and data visualization with enhanced income/expense analysis
+- **Error Handling** (`error_handling.py`): Centralized error management with detailed logging
+- **Configuration Layer** (`config_manager.py`): Configuration management with validation
+- **Kivy Components** (`kv_components.py`): Kivy language compatible components
 - **Main Application** (`mmex_kivy_app.py`): Application logic and coordination
 
 ### Areas for Contribution
-- Performance optimizations and caching improvements
+- Performance optimizations and caching improvements (ongoing improvements in progress)
 - Additional chart types and visualization options
 - Enhanced mobile responsiveness
 - Export functionality (CSV, PDF)
 - Additional database schema support
 - UI/UX improvements and accessibility features
+- Asynchronous data loading for better user experience
+- Summary statistics and budget tracking features
 
 Feel free to fork the project and submit pull requests for improvements or bug fixes. Please ensure your code follows the existing modular architecture and includes appropriate error handling.
