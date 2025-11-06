@@ -65,7 +65,11 @@ class ConfigManager:
     """Manages application configuration with file persistence."""
     
     def __init__(self, config_file: str = "mmex_config.json"):
-        self.config_file = Path(config_file)
+        # Use user's home directory for configuration
+        home_dir = Path.home() / ".mmex_reader"
+        # Create config directory if it doesn't exist
+        home_dir.mkdir(exist_ok=True, parents=True)
+        self.config_file = home_dir / config_file
         self.config = AppConfig()
         self.load_config()
     
