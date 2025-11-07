@@ -66,6 +66,16 @@ class TransactionGrid(GridLayout):
         super().__init__(**kwargs)
         self.cols = 7  # Date, Account, Payee, Category, Tags, Notes, Amount
         
+    def _on_header_press(self, instance, header, callback):
+        """處理標題按鈕點擊事件，確保正確傳遞列名稱到排序回調函數。
+        
+        Args:
+            instance: 按鈕實例
+            header: 列標題名稱
+            callback: 排序回調函數
+        """
+        callback(header)
+        
     def populate_with_dataframe(self, df, headers, sort_callback=None, row_click_callback=None):
         """Populate the grid with DataFrame data."""
         self.clear_widgets()
@@ -79,7 +89,9 @@ class TransactionGrid(GridLayout):
                 background_color=(0.8, 0.8, 0.8, 1)
             )
             if sort_callback:
-                header_btn.bind(on_press=lambda x, col=header: sort_callback(col))
+                # 使用 functools.partial 來確保正確捕獲每個列名稱
+                from functools import partial
+                header_btn.bind(on_press=partial(self._on_header_press, header=header, callback=sort_callback))
             self.add_widget(header_btn)
         
         # Add data rows
