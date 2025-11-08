@@ -133,14 +133,42 @@ class UIConfig:
     def __init__(self):
         self.colors = UIColors()
         self.responsive = ResponsiveConfig.get_config(Window.width)
+        self._resize_callbacks = []
         
         # Update responsive config when window size changes
         Window.bind(on_resize=self._on_window_resize)
     
     def _on_window_resize(self, instance, width, height):
         """Update responsive configuration when window is resized."""
+        old_size = self.responsive.screen_size
         self.responsive = ResponsiveConfig.get_config(width)
-        logger.debug(f"Window resized to {width}x{height}, updated to {self.responsive.screen_size.value}")
+        new_size = self.responsive.screen_size
+        logger.debug(f"Window resized to {width}x{height}, updated to {new_size.value}")
+        
+        # Notify registered callbacks if screen size category changed
+        if old_size != new_size:
+            for callback in self._resize_callbacks:
+                callback(self.responsive)
+    
+    def register_resize_callback(self, callback):
+        """Register a callback to be notified when responsive config changes.
+        
+        Args:
+            callback: Function to call with the new responsive config
+        """
+        if callback not in self._resize_callbacks:
+            self._resize_callbacks.append(callback)
+            logger.debug(f"Registered resize callback: {callback.__qualname__ if hasattr(callback, '__qualname__') else callback}")
+    
+    def unregister_resize_callback(self, callback):
+        """Unregister a previously registered callback.
+        
+        Args:
+            callback: Previously registered callback function
+        """
+        if callback in self._resize_callbacks:
+            self._resize_callbacks.remove(callback)
+            logger.debug(f"Unregistered resize callback: {callback.__qualname__ if hasattr(callback, '__qualname__') else callback}")
     
     @property
     def is_mobile(self) -> bool:
@@ -780,11 +808,14 @@ class AccountTabContent(BaseUIComponent):
         except Exception as e:
             logger.error(f"Error creating account header: {e}")
             self.show_error("Error creating account header")
+            # Recreate balance label with proper settings
+            self.balance_label = self.create_label(
                 text="Balance: Loading...",
                 size_hint=(0.3, 1),
                 halign='right',
                 valign='middle',
                 text_size=(None, None)
+            )
             self.header.add_widget(self.account_label)
             self.header.add_widget(self.balance_label)
         
