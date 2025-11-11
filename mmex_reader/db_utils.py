@@ -867,18 +867,21 @@ def calculate_balance_for_account(db_path: str, account_id: int) -> Tuple[Option
                 CASE 
                     WHEN TRANSCODE = 'Deposit' THEN TRANSAMOUNT
                     WHEN TRANSCODE = 'Withdrawal' THEN -TRANSAMOUNT
-                    WHEN TRANSCODE = 'Transfer' AND ACCOUNTID = ? THEN -TRANSAMOUNT
-                    WHEN TRANSCODE = 'Transfer' AND TOACCOUNTID = ? THEN TRANSAMOUNT
+                    WHEN TRANSCODE = 'Transfer' AND t.ACCOUNTID = ? THEN -t.TRANSAMOUNT
                     ELSE 0
                 END
+            ), 0.0) + 
+            COALESCE((
+                SELECT SUM(t2.TRANSAMOUNT) 
+                FROM {TRANSACTION_TABLE} t2 
+                WHERE t2.TOACCOUNTID = ? AND t2.TRANSCODE = 'Transfer' AND t2.DELETEDTIME = ''
             ), 0.0) as BALANCE
-        FROM {TRANSACTION_TABLE}
-        WHERE (ACCOUNTID = ? OR TOACCOUNTID = ?) 
-        AND DELETEDTIME = ''
+        FROM {TRANSACTION_TABLE} t
+        WHERE t.ACCOUNTID = ? AND t.DELETEDTIME = ''
         """
 
         # Execute query with proper parameter binding
-        params = [account_id, account_id, account_id, account_id]
+        params = [account_id, account_id, account_id]
         error, result_df = handle_database_query(conn, query, params)
         
         if error:
