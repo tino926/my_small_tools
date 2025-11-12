@@ -598,34 +598,92 @@ def create_income_vs_expenses_chart(transactions_df):
     validate_dataframe(transactions_df, ['TRANSDATE', 'TRANSCODE', 'TRANSAMOUNT'])
     
     try:
+        # Create a copy to avoid modifying original data
+        df_copy = transactions_df.copy()
+        
         # Convert TRANSDATE to datetime
-        transactions_df = transactions_df.copy()
-        transactions_df['TRANSDATE'] = pd.to_datetime(transactions_df['TRANSDATE'])
+        df_copy['TRANSDATE'] = pd.to_datetime(df_copy['TRANSDATE'])
         
-        # Group by month and type (income/expense)
-        monthly_data = transactions_df.groupby([
-            transactions_df['TRANSDATE'].dt.to_period('M'),
-            'TRANSCODE'
-        ])['TRANSAMOUNT'].sum().unstack(fill_value=0)
+        # Safely convert amounts to numeric
+        df_copy['TRANSAMOUNT'] = safe_numeric_conversion(df_copy['TRANSAMOUNT'], 'TRANSAMOUNT')
         
-        if monthly_data.empty:
-            raise DataValidationError("No monthly transaction data available")
+        # Separate income and expenses based on transaction type
+        income_df = df_copy[df_copy['TRANSCODE'] == 'Deposit'].copy()
+        expense_df = df_copy[df_copy['TRANSCODE'] == 'Withdrawal'].copy()
         
-        # Create figure and axis
-        fig = Figure(figsize=(10, 6), dpi=100)
+        # Group by month
+        if not income_df.empty:
+            income_df['Month'] = income_df['TRANSDATE'].dt.to_period('M')
+            monthly_income = income_df.groupby('Month')['TRANSAMOUNT'].sum()
+        else:
+            monthly_income = pd.Series(dtype=float)
+        
+        if not expense_df.empty:
+            expense_df['Month'] = expense_df['TRANSDATE'].dt.to_period('M')
+            monthly_expenses = expense_df.groupby('Month')['TRANSAMOUNT'].sum()
+        else:
+            monthly_expenses = pd.Series(dtype=float)
+        
+        # Combine data for consistent date range
+        all_months = pd.Index(list(monthly_income.index) + list(monthly_expenses.index)).unique()
+        monthly_income = monthly_income.reindex(all_months, fill_value=0)
+        monthly_expenses = monthly_expenses.reindex(all_months, fill_value=0)
+        
+        # Create comparison DataFrame
+        comparison_df = pd.DataFrame({
+            'Income': monthly_income,
+            'Expenses': monthly_expenses
+        })
+        
+        if comparison_df.empty:
+            raise DataValidationError("No income or expense data available")
+        
+        # Sort by date
+        comparison_df = comparison_df.sort_index()
+        
+        # Create figure with better layout
+        fig = Figure(figsize=(12, 6), dpi=100)
+        fig.patch.set_facecolor('white')
         ax = fig.add_subplot(111)
         
-        # Create bar chart
-        monthly_data.plot(kind='bar', ax=ax)
+        # Create bar chart with improved styling
+        dates = [str(period) for period in comparison_df.index]
+        x_pos = np.arange(len(dates))
+        width = 0.35
+        
+        bars1 = ax.bar(x_pos - width/2, comparison_df['Income'], width, 
+                      label='Income', color='green', alpha=0.7)
+        bars2 = ax.bar(x_pos + width/2, comparison_df['Expenses'], width, 
+                      label='Expenses', color='red', alpha=0.7)
         
         # Set labels and title
-        ax.set_xlabel('Month')
-        ax.set_ylabel('Amount ($)')
-        ax.set_title('Income vs Expenses Over Time')
-        ax.legend(['Income', 'Expenses'])
+        ax.set_xlabel('Month', fontsize=12)
+        ax.set_ylabel('Amount ($)', fontsize=12)
+        ax.set_title('Income vs Expenses Over Time', fontsize=14, fontweight='bold')
         
-        # Rotate x-axis labels for better readability
-        plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+        # Set x-axis labels
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(dates, rotation=45, ha='right')
+        
+        # Format y-axis to show currency
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
+        
+        # Add legend
+        ax.legend()
+        
+        # Add grid for better readability
+        ax.grid(True, alpha=0.3, axis='y')
+        
+        # Add value labels on bars for better readability
+        for bars in [bars1, bars2]:
+            for bar in bars:
+                height = bar.get_height()
+                if height > 0:  # Only show labels for non-zero values
+                    ax.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
+                           f'${height:,.0f}', ha='center', va='bottom', fontsize=8)
+        
+        # Adjust layout
+        fig.tight_layout()
         
         # Create canvas
         canvas = FigureCanvasKivyAgg(fig)
