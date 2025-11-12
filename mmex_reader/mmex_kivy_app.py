@@ -135,6 +135,10 @@ class MMEXAppLayout(BoxLayout):
         
         # Initialize async loading
         self.loading_indicator = LoadingIndicator()
+        
+        # Initialize data cache for improved performance
+        self._data_cache = {}
+        self._cache_key_prefix = "transactions"
 
         # Create UI components
         self._create_date_inputs()
@@ -363,6 +367,8 @@ class MMEXAppLayout(BoxLayout):
         end_date = self.end_date_input.get_date() if hasattr(self.end_date_input, 'get_date') else self.end_date_input.text
         
         if self._validate_date(start_date) and self._validate_date(end_date):
+            # Clear cache when date range changes
+            self._clear_cache()
             self.run_global_query()
 
     def _create_search_filter_layout(self):
@@ -705,12 +711,27 @@ class MMEXAppLayout(BoxLayout):
         self._update_current_tab()
 
     def _clear_search_filter(self, instance):
-        """Clear search filter."""
+        """Clear search filter and reload data."""
         self.search_input.text = ""
         self.filter_button.text = "All Fields"
+        self.current_search_text = ""
+        
         # Reset to first page when clearing filter
         self.current_page = 1
-        self._load_paginated_data()
+        
+        # Check if we have cached data for the current parameters
+        cache_key = self._generate_cache_key(self.current_page, self.page_size)
+        cached_data = self._get_cached_data(cache_key)
+        
+        if cached_data:
+            # Use cached data if available
+            self.total_count = cached_data.get('count', 0)
+            self.all_transactions_df = cached_data.get('transactions', pd.DataFrame())
+            self._apply_search_filter()
+            self._update_pagination_controls()
+        else:
+            # Load fresh data if not cached
+            self._load_paginated_data()
         
     def on_transaction_row_click(self, transaction_data):
         """Handle click on a transaction row.
@@ -901,11 +922,45 @@ class MMEXAppLayout(BoxLayout):
         # Update page input
         self.page_input.text = str(self.current_page)
 
+    def _generate_cache_key(self, page_number, page_size, account_id=None):
+        """Generate a cache key based on current parameters."""
+        start_date = self.start_date_input.get_date() if hasattr(self.start_date_input, 'get_date') else self.start_date_input.text
+        end_date = self.end_date_input.get_date() if hasattr(self.end_date_input, 'get_date') else self.end_date_input.text
+        return f"{self._cache_key_prefix}_{start_date}_{end_date}_{account_id or 'all'}_{page_number}_{page_size}"
+    
+    def _clear_cache(self):
+        """Clear the data cache."""
+        self._data_cache.clear()
+    
+    def _get_cached_data(self, cache_key):
+        """Get data from cache if available."""
+        return self._data_cache.get(cache_key)
+    
+    def _set_cached_data(self, cache_key, data):
+        """Store data in cache with size limit to prevent memory issues."""
+        # Limit cache size to prevent memory issues
+        if len(self._data_cache) >= 50:  # Keep only last 50 entries
+            # Remove oldest entries
+            oldest_keys = list(self._data_cache.keys())[:10]
+            for key in oldest_keys:
+                del self._data_cache[key]
+        
+        self._data_cache[cache_key] = data
+
     def _load_paginated_data(self):
-        """Load paginated transaction data asynchronously."""
+        """Load paginated transaction data asynchronously with caching support."""
         start_date_str = self.start_date_input.get_date() if hasattr(self.start_date_input, 'get_date') else self.start_date_input.text
         end_date_str = self.end_date_input.get_date() if hasattr(self.end_date_input, 'get_date') else self.end_date_input.text
 
+        # Generate cache key
+        cache_key = self._generate_cache_key(self.current_page, self.page_size)
+        
+        # Check cache first
+        cached_data = self._get_cached_data(cache_key)
+        if cached_data:
+            self._on_transactions_loaded(cached_data)
+            return
+        
         # Show loading indicator
         self.loading_indicator.show(self.all_transactions_status, "Loading transactions...")
         
@@ -946,8 +1001,32 @@ class MMEXAppLayout(BoxLayout):
         self.loading_indicator.hide()
         show_popup("Error", f"Error getting transaction count: {error}")
         
+    def _on_transactions_loaded_with_cache(self, result, cache_key):
+        """Handle successful transactions loading with caching."""
+        error, self.all_transactions_df = result
+        
+        if error:
+            self._on_transactions_error(error)
+            return
+            
+        # Cache the results for future use
+        cached_results = {
+            'count': self.total_count,
+            'transactions': self.all_transactions_df.copy() if not self.all_transactions_df.empty else pd.DataFrame()
+        }
+        self._set_cached_data(cache_key, cached_results)
+        
+        # Apply search filter to paginated data
+        self._apply_search_filter()
+        
+        # Update pagination controls
+        self._update_pagination_controls()
+        
+        # Hide loading indicator
+        self.loading_indicator.hide()
+
     def _on_transactions_loaded(self, result):
-        """Handle successful transactions loading."""
+        """Handle successful transactions loading (legacy method for compatibility)."""
         error, self.all_transactions_df = result
         
         if error:
