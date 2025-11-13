@@ -81,7 +81,8 @@ class AsyncDatabaseOperation:
             *args, **kwargs: Arguments to pass to the operation function
         """
         if self.is_running:
-            logger.warning("Another async operation is already running")
+            op_name = getattr(self.current_thread, "name", "Unknown Operation")
+            logger.warning(f"Another async operation '{op_name}' is already running")
             return
 
         self.is_running = True
