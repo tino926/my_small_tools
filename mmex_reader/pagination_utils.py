@@ -156,16 +156,22 @@ class PaginationInfo:
     @property
     def start_index(self) -> int:
         """Get the starting index for current page (1-based)."""
-        if self.total_count == 0:
+        # No records or invalid page size yields no range
+        if self.total_count == 0 or self.page_size <= 0:
             return 0
-        return (self.current_page - 1) * self.page_size + 1
+        # Clamp current page within valid bounds to avoid invalid ranges
+        page = min(max(1, self.current_page), self.total_pages)
+        return (page - 1) * self.page_size + 1
     
     @property
     def end_index(self) -> int:
         """Get the ending index for current page (1-based)."""
-        if self.total_count == 0:
+        # No records or invalid page size yields no range
+        if self.total_count == 0 or self.page_size <= 0:
             return 0
-        end = self.current_page * self.page_size
+        # Clamp current page within valid bounds
+        page = min(max(1, self.current_page), self.total_pages)
+        end = page * self.page_size
         return min(end, self.total_count)
     
     def get_page_info_text(self) -> str:
