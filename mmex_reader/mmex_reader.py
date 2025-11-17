@@ -470,15 +470,16 @@ class MMEXReader:
                 print("No transactions found for the specified date range.")
                 return
                 
-            # Format the display
-            pd.set_option('display.max_rows', None)
-            pd.set_option('display.max_columns', None)
-            pd.set_option('display.width', 1000)
-            pd.set_option('display.colheader_justify', 'center')
-            
-            print("\n=== TRANSACTIONS ===")
-            print(df)
-            print(f"\nTotal transactions: {len(df)}")
+            # Format the display using a temporary context to avoid global side effects
+            with pd.option_context(
+                'display.max_rows', None,
+                'display.max_columns', None,
+                'display.width', 1000,
+                'display.colheader_justify', 'center'
+            ):
+                print("\n=== TRANSACTIONS ===")
+                print(df)
+                print(f"\nTotal transactions: {len(df)}")
             
             logger.info(f"Displayed {len(df)} transactions")
             
