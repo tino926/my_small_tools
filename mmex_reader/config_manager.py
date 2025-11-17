@@ -6,6 +6,7 @@ both file-based configuration (.env files) and GUI-based settings management.
 
 import json
 import os
+from datetime import datetime
 from dataclasses import dataclass, asdict
 from typing import Optional, Dict, Any
 from pathlib import Path
@@ -81,7 +82,16 @@ class ConfigManager:
                     data = json.load(f)
                     self.config = AppConfig.from_dict(data)
             except (json.JSONDecodeError, TypeError, ValueError) as e:
+                # Backup the corrupt/invalid config to preserve user data, then reset to defaults
                 print(f"Error loading config: {e}. Using defaults.")
+                try:
+                    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    backup_name = f"{self.config_file.stem}.corrupt_{ts}{self.config_file.suffix}"
+                    backup_path = self.config_file.with_name(backup_name)
+                    os.replace(self.config_file, backup_path)
+                    print(f"Backed up invalid config to: {backup_path}")
+                except Exception as backup_err:
+                    print(f"Failed to backup invalid config: {backup_err}")
                 self.config = AppConfig()
         
         # Load database path from .env if not set in config
@@ -95,9 +105,18 @@ class ConfigManager:
     def save_config(self) -> None:
         """Save configuration to file."""
         try:
-            with open(self.config_file, 'w', encoding='utf-8') as f:
+            # Write atomically: write to temp file then replace
+            tmp_path = self.config_file.with_suffix(self.config_file.suffix + ".tmp")
+            with open(tmp_path, 'w', encoding='utf-8') as f:
                 json.dump(self.config.to_dict(), f, indent=2)
+            os.replace(tmp_path, self.config_file)
         except Exception as e:
+            # Attempt cleanup of temp file on failure
+            try:
+                if 'tmp_path' in locals() and os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
             print(f"Error saving config: {e}")
     
     def get_config(self) -> AppConfig:
