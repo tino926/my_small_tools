@@ -316,10 +316,21 @@ def create_popup(title: str, content_widget: Any, buttons: Optional[List[Dict]] 
         Popup: Configured popup widget
     """
     # Set default properties
+    # Map popup type to color style (used for header separator and accents)
+    type_color_map = {
+        'error': ui_config.colors.error,
+        'warning': ui_config.colors.warning,
+        'success': ui_config.colors.success,
+        'info': ui_config.colors.button
+    }
+    header_color = type_color_map.get(popup_type, ui_config.colors.button)
+
     default_props = {
         'title': title,
         'size_hint': (0.8, 0.6),
-        'auto_dismiss': True
+        'auto_dismiss': True,
+        # Style Popup header separator to reflect popup type
+        'separator_color': header_color
     }
     default_props.update(kwargs)
     
@@ -372,6 +383,8 @@ def show_popup(title: str, message: str, popup_type: str = 'info'):
         halign='center',
         valign='middle'
     )
+    # Ensure center alignment by coupling text_size to widget size
+    content.bind(size=lambda inst, val: setattr(inst, 'text_size', inst.size))
     
     # Set color based on popup type
     color_map = {
@@ -380,6 +393,20 @@ def show_popup(title: str, message: str, popup_type: str = 'info'):
         'success': ui_config.colors.success,
         'info': ui_config.colors.button
     }
+    # Apply message color based on type for quick visual cue
+    content.color = (0, 0, 0, 1)  # default text color
+    try:
+        # Use a subtle tint via canvas background when possible
+        tint = color_map.get(popup_type, ui_config.colors.button)
+        with content.canvas.before:
+            from kivy.graphics import Color, Rectangle
+            Color(*tint)
+            rect = Rectangle(pos=content.pos, size=content.size)
+            content.bind(pos=lambda inst, val: setattr(rect, 'pos', inst.pos))
+            content.bind(size=lambda inst, val: setattr(rect, 'size', inst.size))
+    except Exception:
+        # Non-critical styling failure; keep functional popup
+        pass
     
     # Create and show popup
     popup = create_popup(
@@ -863,7 +890,7 @@ class AccountTabContent(BaseUIComponent):
         """Update the displayed balance."""
         self.balance_label.text = f"Balance: ${balance:.2f}"
 
-def create_popup(title, content_widget=None, buttons=None, size_hint=(0.8, 0.4), auto_dismiss=True):
+def create_popup(title, content_widget=None, buttons=None, size_hint=(0.8, 0.4), auto_dismiss=True, popup_type='info'):
     """Create a popup with customizable content and buttons.
     
     Args:
@@ -902,16 +929,43 @@ def create_popup(title, content_widget=None, buttons=None, size_hint=(0.8, 0.4),
         main_layout.add_widget(button_layout)
     
     # Create and return popup
+    if popup_type == 'error':
+        auto_dismiss = False
+    separator_color_map = {
+        'error': (1, 0.3, 0.3, 1),
+        'warning': (1, 0.8, 0.2, 1),
+        'success': (0.3, 0.8, 0.4, 1),
+        'info': (0.2, 0.6, 1, 1)
+    }
     popup = Popup(
         title=title,
         content=main_layout,
         size_hint=size_hint,
-        auto_dismiss=auto_dismiss
+        auto_dismiss=auto_dismiss,
+        separator_color=separator_color_map.get(popup_type, (0.2, 0.6, 1, 1))
     )
+    def _on_key_down(window, key, scancode, codepoint, modifiers):
+        if key == 27:
+            try:
+                popup.dismiss()
+            except Exception:
+                pass
+            return True
+        return False
+    try:
+        Window.bind(on_key_down=_on_key_down)
+        def _cleanup(instance):
+            try:
+                Window.unbind(on_key_down=_on_key_down)
+            except Exception:
+                pass
+        popup.bind(on_dismiss=_cleanup)
+    except Exception:
+        pass
     
     return popup
 
-def show_popup(title, message):
+def show_popup(title, message, popup_type='info'):
     """Show a simple popup with the given title and message.
     
     Args:
@@ -919,10 +973,15 @@ def show_popup(title, message):
         message: The message to display
     """
     # Use the more flexible create_popup function
+    if isinstance(title, str):
+        tl = title.lower()
+        if 'error' in tl or '錯誤' in tl:
+            popup_type = 'error'
     popup = create_popup(
         title=title,
         content_widget=Label(text=message),
-        buttons=[{'text': 'OK', 'callback': lambda instance: popup.dismiss()}]
+        buttons=[{'text': 'OK', 'callback': lambda instance: popup.dismiss()}],
+        popup_type=popup_type
     )
     popup.open()
 
