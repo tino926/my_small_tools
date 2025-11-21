@@ -560,7 +560,7 @@ def get_account_by_id(db_path: str, account_id: int) -> Tuple[Optional[str], Opt
         if not conn:
             logger.error("Could not get a database connection from the pool")
             return "Could not get a database connection from the pool", None
-            
+
         query = f"""
         SELECT 
             ACCOUNTID, 
@@ -585,38 +585,40 @@ def get_account_by_id(db_path: str, account_id: int) -> Tuple[Optional[str], Opt
         FROM {ACCOUNT_TABLE}
         WHERE ACCOUNTID = ?
         """
-        
-        cursor = conn.cursor()
-        cursor.execute(query, (account_id,))
-        result = cursor.fetchone()
-        
-        if not result:
+
+        # Use centralized query handler for consistent error handling and resource safety
+        error, df = handle_database_query(conn, query, [account_id])
+        if error:
+            logger.error(f"Error retrieving account {account_id}: {error}")
+            return error, None
+
+        if df.empty:
             logger.warning(f"Account with ID {account_id} not found")
             return f"Account with ID {account_id} not found", None
-            
-        # Create a comprehensive account data dictionary
+
+        row = df.iloc[0]
         account_data = {
-            "id": result[0],
-            "name": result[1],
-            "type": result[2],
-            "initial_balance": result[3],
-            "status": result[4],
-            "notes": result[5],
-            "held_at": result[6],
-            "website": result[7],
-            "contact_info": result[8],
-            "access_info": result[9],
-            "favorite_account": result[10],
-            "currency_id": result[11],
-            "statement_locked": result[12],
-            "statement_date": result[13],
-            "minimum_balance": result[14],
-            "credit_limit": result[15],
-            "interest_rate": result[16],
-            "payment_due_date": result[17],
-            "minimum_payment": result[18]
+            "id": int(row["ACCOUNTID"]),
+            "name": row["ACCOUNTNAME"],
+            "type": row["ACCOUNTTYPE"],
+            "initial_balance": float(row["INITIALBAL"]) if pd.notna(row["INITIALBAL"]) else 0.0,
+            "status": row["STATUS"],
+            "notes": row["NOTES"],
+            "held_at": row["HELDAT"],
+            "website": row["WEBSITE"],
+            "contact_info": row["CONTACTINFO"],
+            "access_info": row["ACCESSINFO"],
+            "favorite_account": int(row["FAVORITEACCT"]) if pd.notna(row["FAVORITEACCT"]) else 0,
+            "currency_id": int(row["CURRENCYID"]) if pd.notna(row["CURRENCYID"]) else 0,
+            "statement_locked": int(row["STATEMENTLOCKED"]) if pd.notna(row["STATEMENTLOCKED"]) else 0,
+            "statement_date": row["STATEMENTDATE"],
+            "minimum_balance": float(row["MINIMUMBALANCE"]) if pd.notna(row["MINIMUMBALANCE"]) else 0.0,
+            "credit_limit": float(row["CREDITLIMIT"]) if pd.notna(row["CREDITLIMIT"]) else 0.0,
+            "interest_rate": float(row["INTERESTRATE"]) if pd.notna(row["INTERESTRATE"]) else 0.0,
+            "payment_due_date": row["PAYMENTDUEDATE"],
+            "minimum_payment": float(row["MINIMUMPAYMENT"]) if pd.notna(row["MINIMUMPAYMENT"]) else 0.0,
         }
-        
+
         logger.info(f"Retrieved account details for ID {account_id}: {account_data['name']}")
         return None, account_data
 
@@ -755,13 +757,15 @@ def get_transactions(db_path: str, start_date_str: Optional[str] = None,
 
         query += " ORDER BY t.TRANSDATE DESC, t.TRANSID DESC"
 
-        # Add pagination if specified
+        # Add pagination if specified with parameter binding
         if page_size is not None:
             if page_number is not None:
                 offset = (page_number - 1) * page_size
-                query += f" LIMIT {page_size} OFFSET {offset}"
+                query += " LIMIT ? OFFSET ?"
+                params.extend([page_size, offset])
             else:
-                query += f" LIMIT {page_size}"
+                query += " LIMIT ?"
+                params.append(page_size)
 
         # Execute query with proper error handling
         error, transactions_df = handle_database_query(conn, query, params)
