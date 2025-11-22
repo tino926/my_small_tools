@@ -990,7 +990,7 @@ class MMEXAppLayout(BoxLayout):
         
         transactions_operation = AsyncDatabaseOperation(
             target_func=get_transactions,
-            args=(self.db_path, start_date_str, end_date_str, self.page_size, self.current_page),
+            args=(self.db_path, start_date_str, end_date_str, None, self.page_size, self.current_page),
             success_callback=self._on_transactions_loaded,
             error_callback=self._on_transactions_error
         )
