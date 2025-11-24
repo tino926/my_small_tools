@@ -17,6 +17,13 @@ from db_utils import (
 logger = logging.getLogger(__name__)
 
 
+def get_offset_limit(page: int, page_size: int) -> Tuple[int, int]:
+    """Calculate offset and limit for pagination."""
+    if page_size is None or page_size <= 0:
+        return 0, 0
+    page = 1 if page is None or page <= 0 else page
+    return (page - 1) * page_size, page_size
+
 def get_transaction_count(db_path: str, start_date_str: Optional[str] = None, 
                          end_date_str: Optional[str] = None, 
                          account_id: Optional[int] = None) -> Tuple[Optional[str], int]:
