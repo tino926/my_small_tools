@@ -705,7 +705,7 @@ def create_top_payees_chart(transactions_df):
     Returns:
         A FigureCanvasKivyAgg widget containing the chart
     """
-    validate_dataframe(transactions_df, ['TRANSCODE', 'PAYEE', 'TRANSAMOUNT'])
+    validate_dataframe(transactions_df, ['TRANSCODE', 'PAYEENAME', 'TRANSAMOUNT'])
     
     # Filter for withdrawals (expenses)
     expenses_df = transactions_df[transactions_df['TRANSCODE'] == 'Withdrawal']
@@ -714,7 +714,7 @@ def create_top_payees_chart(transactions_df):
         raise DataValidationError("No expense data available for the selected period")
     
     # Group by payee and sum amounts
-    payee_spending = expenses_df.groupby('PAYEE')['TRANSAMOUNT'].sum().reset_index()
+    payee_spending = expenses_df.groupby('PAYEENAME')['TRANSAMOUNT'].sum().reset_index()
     
     if payee_spending.empty:
         raise DataValidationError("No payee spending data available")
@@ -740,7 +740,7 @@ def create_top_payees_chart(transactions_df):
         
         # Set x-axis labels
         ax.set_xticks(range(len(top_payees)))
-        ax.set_xticklabels(top_payees['PAYEE'], rotation=45, ha='right')
+        ax.set_xticklabels(top_payees['PAYEENAME'], rotation=45, ha='right')
         
         # Add value labels on bars
         for bar_index, (bar_rect, transaction_amount) in enumerate(zip(bars, top_payees['TRANSAMOUNT'])):
