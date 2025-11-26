@@ -16,6 +16,8 @@ from kivy.uix.button import Button
 from kivy.uix.filechooser import FileChooserListView
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
+from kivy.core.window import Window
+from ui_components import show_popup
 from kivy.uix.spinner import Spinner
 from kivy.uix.switch import Switch
 from kivy.uix.textinput import TextInput
@@ -261,9 +263,20 @@ class SettingsPopup(Popup):
         
         main_layout.add_widget(button_layout)
         self.content = main_layout
+        Window.bind(on_key_down=self._on_key_down)
+        self.bind(on_dismiss=lambda instance: Window.unbind(on_key_down=self._on_key_down))
         
         # Store references to input widgets
         self.input_widgets = {}
+
+    def _on_key_down(self, window, key, scancode, codepoint, modifiers):
+        if key == 27:
+            try:
+                self.dismiss()
+            except Exception:
+                pass
+            return True
+        return False
     
     def _add_section_header(self, layout, title):
         """Add a section header to the layout."""
@@ -392,12 +405,7 @@ class SettingsPopup(Popup):
             Clock.schedule_once(lambda dt: self.dismiss(), 2.5)
             
         except Exception as e:
-            error_popup = Popup(
-                title="Error",
-                content=Label(text=f"Error saving settings: {str(e)}"),
-                size_hint=(0.4, 0.3)
-            )
-            error_popup.open()
+            show_popup("Error", f"Error saving settings: {str(e)}", popup_type='error')
     
     def _reset_to_defaults(self, instance):
         """Reset all settings to default values."""
