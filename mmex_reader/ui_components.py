@@ -652,7 +652,7 @@ class DatePickerWidget(BaseUIComponent):
 class DatePickerButton(BaseUIComponent):
     """A button that opens a date picker when clicked."""
     
-    def __init__(self, initial_date=None, date_change_callback=None, **kwargs):
+    def __init__(self, initial_date: Optional[str] = None, date_change_callback: Optional[Callable] = None, **kwargs):
         """
         Initialize DatePickerButton.
         
@@ -683,7 +683,7 @@ class DatePickerButton(BaseUIComponent):
         )
         self.add_widget(self.button)
         
-    def _open_date_picker(self, instance):
+    def _open_date_picker(self, instance: Any) -> None:
         """Open the date picker popup."""
         try:
             # Create date picker widget
@@ -698,13 +698,13 @@ class DatePickerButton(BaseUIComponent):
                 content=date_picker,
                 size_hint=(0.8, 0.8)
             )
-            show_popup(self.popup)
+            self.popup.open()
             
         except Exception as e:
             logger.error(f"Error opening date picker: {e}")
             self.show_error("Error opening date picker")
         
-    def _on_date_selected(self, selected_date):
+    def _on_date_selected(self, selected_date: Optional[str]) -> None:
         """Handle date selection from picker."""
         try:
             if selected_date:
@@ -718,11 +718,11 @@ class DatePickerButton(BaseUIComponent):
             logger.error(f"Error handling date selection: {e}")
             self.show_error("Error selecting date")
         
-    def get_date(self):
+    def get_date(self) -> str:
         """Get the current date value."""
         return self.current_date
         
-    def set_date(self, date_str):
+    def set_date(self, date_str: str) -> None:
         """Set the date value with validation."""
         try:
             if date_str:
