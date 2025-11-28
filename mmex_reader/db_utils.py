@@ -28,7 +28,7 @@ from typing import Dict, Optional, Tuple, Any, Union
 import pandas as pd
 from dotenv import load_dotenv
 
-from error_handling import handle_database_query, validate_date_format, validate_date_range
+from mmex_reader.error_handling import handle_database_query, validate_date_format, validate_date_range
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -634,6 +634,84 @@ def get_account_by_id(db_path: str, account_id: int) -> Tuple[Optional[str], Opt
             _connection_pool.release_connection(conn)
 
 
+def _build_transactions_query(start_date: Optional[datetime], end_date: Optional[datetime], account_id: Optional[int], page_size: Optional[int], page_number: Optional[int]) -> Tuple[str, list]:
+    query = f"""
+        SELECT 
+            t.TRANSID, 
+            t.ACCOUNTID, 
+            t.TRANSCODE, 
+            t.TRANSAMOUNT, 
+            t.TRANSACTIONNUMBER, 
+            t.NOTES, 
+            t.TRANSDATE, 
+            t.FOLLOWUPID, 
+            t.TOTRANSAMOUNT, 
+            t.TOSPLITCATEGORY, 
+            t.CATEGID, 
+            t.SUBCATEGID, 
+            t.TRANSACTIONDATE, 
+            t.DELETEDTIME, 
+            t.PAYEEID,
+            t.STATUS,
+            a.ACCOUNTNAME, 
+            c.CATEGNAME, 
+            s.SUBCATEGNAME, 
+            p.PAYEENAME
+        FROM {TRANSACTION_TABLE} t
+        LEFT JOIN {ACCOUNT_TABLE} a ON t.ACCOUNTID = a.ACCOUNTID
+        LEFT JOIN {CATEGORY_TABLE} c ON t.CATEGID = c.CATEGID
+        LEFT JOIN {SUBCATEGORY_TABLE} s ON t.SUBCATEGID = s.SUBCATEGID
+        LEFT JOIN {PAYEE_TABLE} p ON t.PAYEEID = p.PAYEEID
+        WHERE t.DELETEDTIME = ''
+    """
+    params: list = []
+    if account_id is not None:
+        query += " AND t.ACCOUNTID = ?"
+        params.append(account_id)
+    if start_date:
+        query += " AND t.TRANSDATE >= ?"
+        params.append(start_date.strftime("%Y-%m-%d"))
+    if end_date:
+        query += " AND t.TRANSDATE <= ?"
+        params.append(end_date.strftime("%Y-%m-%d"))
+    query += " ORDER BY t.TRANSDATE DESC, t.TRANSID DESC"
+    if page_size is not None:
+        if page_number is not None:
+            offset = (page_number - 1) * page_size
+            query += " LIMIT ? OFFSET ?"
+            params.extend([page_size, offset])
+        else:
+            query += " LIMIT ?"
+            params.append(page_size)
+    return query, params
+
+def _get_tags_for(conn: sqlite3.Connection, transaction_ids: list) -> Dict[int, str]:
+    if not transaction_ids:
+        return {}
+    BATCH_SIZE = 900
+    tags_dict: Dict[int, list] = {}
+    for i in range(0, len(transaction_ids), BATCH_SIZE):
+        batch_ids = transaction_ids[i:i + BATCH_SIZE]
+        placeholders = ','.join(['?' for _ in batch_ids])
+        tag_query = f"""
+                    SELECT tl.REFID as TRANSID, t.TAGNAME
+                    FROM {TAG_TABLE} t
+                    JOIN {TAGLINK_TABLE} tl ON t.TAGID = tl.TAGID
+                    WHERE tl.REFID IN ({placeholders}) AND tl.REFTYPE = 'Transaction'
+                    ORDER BY tl.REFID, t.TAGNAME
+                    """
+        tag_error, tags_df = handle_database_query(conn, tag_query, batch_ids)
+        if tag_error:
+            continue
+        if not tags_df.empty:
+            for _, tag_row in tags_df.iterrows():
+                trans_id = tag_row['TRANSID']
+                tag_name = tag_row['TAGNAME']
+                if trans_id not in tags_dict:
+                    tags_dict[trans_id] = []
+                tags_dict[trans_id].append(tag_name)
+    return {tid: ', '.join(names) for tid, names in tags_dict.items()}
+
 def get_transactions(db_path: str, start_date_str: Optional[str] = None, 
                     end_date_str: Optional[str] = None, account_id: Optional[int] = None,
                     page_size: Optional[int] = None, page_number: Optional[int] = None) -> Tuple[Optional[str], pd.DataFrame]:
@@ -710,62 +788,7 @@ def get_transactions(db_path: str, start_date_str: Optional[str] = None,
             logger.error("Could not get a database connection from the pool")
             return "Could not get a database connection from the pool", pd.DataFrame()
             
-        # Base query with improved column selection and joins
-        query = f"""
-        SELECT 
-            t.TRANSID, 
-            t.ACCOUNTID, 
-            t.TRANSCODE, 
-            t.TRANSAMOUNT, 
-            t.TRANSACTIONNUMBER, 
-            t.NOTES, 
-            t.TRANSDATE, 
-            t.FOLLOWUPID, 
-            t.TOTRANSAMOUNT, 
-            t.TOSPLITCATEGORY, 
-            t.CATEGID, 
-            t.SUBCATEGID, 
-            t.TRANSACTIONDATE, 
-            t.DELETEDTIME, 
-            t.PAYEEID,
-            t.STATUS,
-            a.ACCOUNTNAME, 
-            c.CATEGNAME, 
-            s.SUBCATEGNAME, 
-            p.PAYEENAME
-        FROM {TRANSACTION_TABLE} t
-        LEFT JOIN {ACCOUNT_TABLE} a ON t.ACCOUNTID = a.ACCOUNTID
-        LEFT JOIN {CATEGORY_TABLE} c ON t.CATEGID = c.CATEGID
-        LEFT JOIN {SUBCATEGORY_TABLE} s ON t.SUBCATEGID = s.SUBCATEGID
-        LEFT JOIN {PAYEE_TABLE} p ON t.PAYEEID = p.PAYEEID
-        WHERE t.DELETEDTIME = ''
-        """
-
-        # Add filters with proper parameter binding
-        params = []
-        if account_id is not None:
-            query += " AND t.ACCOUNTID = ?"
-            params.append(account_id)
-
-        if start_date:
-            query += " AND t.TRANSDATE >= ?"
-            params.append(start_date.strftime("%Y-%m-%d"))
-
-        if end_date:
-            query += " AND t.TRANSDATE <= ?"
-            params.append(end_date.strftime("%Y-%m-%d"))
-
-        query += " ORDER BY t.TRANSDATE DESC, t.TRANSID DESC"
-
-        # Add pagination if specified with parameter binding
-        if page_size is not None:
-            if page_number is not None:
-                offset = (page_number - 1) * page_size
-                query += " LIMIT ? OFFSET ?"
-                params.extend([page_size, offset])
-            else:
-                query += " LIMIT ?"
-                params.append(page_size)
+        query, params = _build_transactions_query(start_date, end_date, account_id, page_size, page_number)
 
         # Execute query with proper error handling
         error, transactions_df = handle_database_query(conn, query, params)
@@ -773,47 +796,10 @@ def get_transactions(db_path: str, start_date_str: Optional[str] = None,
             logger.error(f"Error retrieving transactions: {error}")
             return error, pd.DataFrame()
 
-        # Optimize tag retrieval with batched queries to avoid SQLite parameter limits
         if not transactions_df.empty:
-            transaction_ids = transactions_df['TRANSID'].tolist()
-
-            # If no IDs, set empty TAGS and skip
-            if not transaction_ids:
-                transactions_df['TAGS'] = ''
-            else:
-                # SQLite default max host parameters is 999; keep a safe margin
-                BATCH_SIZE = 900
-                tags_dict = {}
-
-                for i in range(0, len(transaction_ids), BATCH_SIZE):
-                    batch_ids = transaction_ids[i:i + BATCH_SIZE]
-                    placeholders = ','.join(['?' for _ in batch_ids])
-                    tag_query = f"""
-                    SELECT tl.REFID as TRANSID, t.TAGNAME
-                    FROM {TAG_TABLE} t
-                    JOIN {TAGLINK_TABLE} tl ON t.TAGID = tl.TAGID
-                    WHERE tl.REFID IN ({placeholders}) AND tl.REFTYPE = 'Transaction'
-                    ORDER BY tl.REFID, t.TAGNAME
-                    """
-
-                    tag_error, tags_df = handle_database_query(conn, tag_query, batch_ids)
-                    if tag_error:
-                        # Log and continue with next batch rather than failing the entire operation
-                        logger.warning(f"Tag query batch failed: {tag_error}")
-                        continue
-
-                    if not tags_df.empty:
-                        for _, tag_row in tags_df.iterrows():
-                            trans_id = tag_row['TRANSID']
-                            tag_name = tag_row['TAGNAME']
-                            if trans_id not in tags_dict:
-                                tags_dict[trans_id] = []
-                            tags_dict[trans_id].append(tag_name)
-
-                # Populate TAGS column by mapping collected tags
-                transactions_df['TAGS'] = transactions_df['TRANSID'].apply(
-                    lambda trans_id: ', '.join(tags_dict.get(trans_id, []))
-                )
+            ids = transactions_df['TRANSID'].tolist()
+            tags_map = _get_tags_for(conn, ids)
+            transactions_df['TAGS'] = transactions_df['TRANSID'].apply(lambda tid: tags_map.get(tid, ''))
         else:
             transactions_df['TAGS'] = ''
 
