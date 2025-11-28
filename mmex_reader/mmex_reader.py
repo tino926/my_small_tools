@@ -21,8 +21,8 @@ from dataclasses import dataclass
 import pandas as pd
 from dotenv import load_dotenv
 
-from db_utils import _connection_pool, load_db_path
-from error_handling import handle_database_query, is_valid_date_format, is_valid_date_range
+from mmex_reader.db_utils import _connection_pool, load_db_path
+from mmex_reader.error_handling import handle_database_query, is_valid_date_format, is_valid_date_range
 
 # Configure logging
 logging.basicConfig(
@@ -411,6 +411,42 @@ class MMEXReader:
         except Exception as e:
             logger.error(f"Error getting transactions by date range: {e}")
             return pd.DataFrame()
+
+    def count_transactions_by_date_range(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> int:
+        """Return count of transactions within a date range using SQL COUNT.
+
+        Args:
+            start_date: Start date (inclusive). Defaults to config.start_date.
+            end_date: End date (inclusive). Defaults to config.end_date.
+
+        Returns:
+            int: Number of transactions in the range, or 0 on error.
+        """
+        self._ensure_connected()
+        start = start_date if start_date is not None else self.config.start_date
+        end = end_date if end_date is not None else self.config.end_date
+
+        query = (
+            "SELECT COUNT(*) AS CNT "
+            "FROM CHECKINGACCOUNT_V1 "
+            "WHERE CHECKINGACCOUNT_V1.TRANSDATE BETWEEN ? AND ?"
+        )
+        try:
+            error, rows = handle_database_query(self.connection, query, params=(start, end), return_dataframe=False)
+            if error:
+                logger.error(f"Error counting transactions: {error}")
+                return 0
+            if not rows:
+                return 0
+            cnt = rows[0][0] if isinstance(rows[0], (list, tuple)) else int(rows[0])
+            return int(cnt)
+        except Exception as e:
+            logger.error(f"Unexpected error counting transactions: {e}")
+            return 0
     
     def display_schema_info(self) -> None:
         """Display database schema information in a formatted table."""
