@@ -16,9 +16,16 @@ logger = logging.getLogger(__name__)
 class AsyncDatabaseOperation:
     """Handles asynchronous database operations with UI callbacks.
 
-    Compatible with two usage styles:
-    - Direct call: AsyncDatabaseOperation().execute_async(func, on_success=..., ...)
-    - Builder style: AsyncDatabaseOperation(target_func=..., args=(...), success_callback=..., error_callback=...).start()
+    Usage:
+        - Direct: `AsyncDatabaseOperation().execute_async(func, on_success=..., ...)`
+        - Builder: `AsyncDatabaseOperation(target_func=..., args=(...), success_callback=..., error_callback=...).start()`
+
+    Attributes:
+        is_running: Whether an operation is currently running
+        current_thread: Background thread executing the operation
+        _completed: Whether the current operation finished (success or error)
+        _timeout: Optional timeout in seconds for the operation
+        _timeout_timer: Internal timer used to implement timeout
     """
 
     def __init__(
@@ -31,7 +38,7 @@ class AsyncDatabaseOperation:
         start_callback: Optional[Callable] = None,
         complete_callback: Optional[Callable] = None,
         timeout: Optional[float] = None,
-    ):
+    ) -> None:
         self.is_running = False
         self.current_thread = None
         self._completed = False
@@ -46,7 +53,7 @@ class AsyncDatabaseOperation:
         self._start_cb = start_callback
         self._complete_cb = complete_callback
 
-    def _schedule_cb(self, cb: Optional[Callable], *cb_args, **cb_kwargs):
+    def _schedule_cb(self, cb: Optional[Callable], *cb_args, **cb_kwargs) -> None:
         if not cb:
             return
 
@@ -68,7 +75,7 @@ class AsyncDatabaseOperation:
         *args,
         timeout: Optional[float] = None,
         **kwargs,
-    ):
+    ) -> "AsyncDatabaseOperation":
         """Execute a database operation asynchronously.
 
         Args:
@@ -83,7 +90,7 @@ class AsyncDatabaseOperation:
         if self.is_running:
             op_name = getattr(self.current_thread, "name", "Unknown Operation")
             logger.warning(f"Another async operation '{op_name}' is already running")
-            return
+            return self
 
         self.is_running = True
         self._completed = False
@@ -109,7 +116,7 @@ class AsyncDatabaseOperation:
             except Exception as e:
                 logger.exception(f"Failed to start timeout timer: {e}")
 
-        def worker():
+        def worker() -> None:
             """Worker function that runs in background thread."""
             try:
                 op_name = getattr(operation, "__name__", str(operation))
@@ -144,10 +151,12 @@ class AsyncDatabaseOperation:
                 self._schedule_cb(on_complete)
 
         # Start the worker thread
-        self.current_thread = threading.Thread(target=worker, daemon=True)
+        op_name_for_thread = getattr(operation, "__name__", "AsyncOperation")
+        self.current_thread = threading.Thread(target=worker, daemon=True, name=op_name_for_thread)
         self.current_thread.start()
+        return self
 
-    def start(self):
+    def start(self) -> Optional["AsyncDatabaseOperation"]:
         """Start the operation using stored builder-style configuration."""
         if not callable(self._target_func):
             logger.error("No target_func provided to AsyncDatabaseOperation.start()")
@@ -163,7 +172,7 @@ class AsyncDatabaseOperation:
             **self._kwargs,
         )
 
-    def cancel(self):
+    def cancel(self) -> None:
         """Cancel the current operation if possible."""
         if self.is_running and self.current_thread:
             logger.info("Attempting to cancel async operation")
