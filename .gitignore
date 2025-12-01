@@ -39,3 +39,5 @@ mmex_reader/fonts/
 .idea/
 *.swp
 *~
+
+prompt.md
