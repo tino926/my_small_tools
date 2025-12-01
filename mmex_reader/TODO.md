@@ -62,13 +62,3 @@ The following major improvements have been implemented:
 - **Error Handling**: Standardized error handling patterns across the codebase
 
 
-## other note
-
-edit history:
-- error_handling.py
-- config_manager.py
-- kv_components.py
-- ui_components.py
-- db_utils.py
-- visualization.py
-- mmex_kivy_app.py
