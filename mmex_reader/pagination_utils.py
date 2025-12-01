@@ -8,10 +8,15 @@ import logging
 from typing import Optional, Tuple
 import pandas as pd
 
-from error_handling import handle_database_query, validate_date_format, validate_date_range
-from db_utils import (
-    TRANSACTION_TABLE, ACCOUNT_TABLE, CATEGORY_TABLE, 
-    SUBCATEGORY_TABLE, PAYEE_TABLE, _connection_pool, _ensure_pool_for_path
+from mmex_reader.error_handling import handle_database_query, is_valid_date_format, validate_date_range, is_valid_date_range
+from mmex_reader.db_utils import (
+    TRANSACTION_TABLE,
+    ACCOUNT_TABLE,
+    CATEGORY_TABLE,
+    SUBCATEGORY_TABLE,
+    PAYEE_TABLE,
+    _connection_pool,
+    _ensure_pool_for_path,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,7 +52,7 @@ def get_transaction_count(db_path: str, start_date_str: Optional[str] = None,
     # Ensure connection pool is initialized for the provided path
     init_error = None
     try:
-        init_error = _ensure_pool_for_path(db_path)
+        init_error, _ = _ensure_pool_for_path(db_path)
     except Exception as e:
         logger.error(f"Unexpected error ensuring pool for path: {e}")
         return f"Unexpected error ensuring pool for path: {e}", 0
@@ -59,17 +64,18 @@ def get_transaction_count(db_path: str, start_date_str: Optional[str] = None,
     # Validate date formats and range before executing query
     try:
         if start_date_str:
-            if not validate_date_format(start_date_str, "start_date"):
+            if not is_valid_date_format(start_date_str, "start_date"):
                 logger.error(f"Invalid start_date format: {start_date_str}")
                 return f"Invalid start_date format: {start_date_str}. Expected format: YYYY-MM-DD", 0
 
         if end_date_str:
-            if not validate_date_format(end_date_str, "end_date"):
+            if not is_valid_date_format(end_date_str, "end_date"):
                 logger.error(f"Invalid end_date format: {end_date_str}")
                 return f"Invalid end_date format: {end_date_str}. Expected format: YYYY-MM-DD", 0
 
         if start_date_str and end_date_str:
-            if not validate_date_range(start_date_str, end_date_str):
+            range_error = validate_date_range(start_date_str, end_date_str)
+            if range_error:
                 logger.error(f"Invalid date range: {start_date_str} to {end_date_str}")
                 return f"Invalid date range: start date {start_date_str} must be before or equal to end date {end_date_str}", 0
     except Exception as e:
@@ -78,38 +84,28 @@ def get_transaction_count(db_path: str, start_date_str: Optional[str] = None,
 
     conn = None
     try:
-        # Get a connection from the pool
         conn = _connection_pool.get_connection()
         if not conn:
             logger.error("Could not get a database connection from the pool")
             return "Could not get a database connection from the pool", 0
-            
-        # Build count query with same filters as main query
+
         query = f"""
         SELECT COUNT(*) as total_count
         FROM {TRANSACTION_TABLE} t
-        LEFT JOIN {ACCOUNT_TABLE} a ON t.ACCOUNTID = a.ACCOUNTID
-        LEFT JOIN {CATEGORY_TABLE} c ON t.CATEGID = c.CATEGID
-        LEFT JOIN {SUBCATEGORY_TABLE} s ON t.SUBCATEGID = s.SUBCATEGID
-        LEFT JOIN {PAYEE_TABLE} p ON t.PAYEEID = p.PAYEEID
         WHERE t.DELETEDTIME = ''
         """
 
-        # Add filters with proper parameter binding
         params = []
         if account_id is not None:
             query += " AND t.ACCOUNTID = ?"
             params.append(account_id)
-
         if start_date_str:
             query += " AND t.TRANSDATE >= ?"
             params.append(start_date_str)
-
         if end_date_str:
             query += " AND t.TRANSDATE <= ?"
             params.append(end_date_str)
 
-        # Execute count query using standardized query handler
         error, rows = handle_database_query(conn, query, params, return_dataframe=False)
         total_count = rows[0][0] if rows else 0
         if error:
