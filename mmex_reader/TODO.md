@@ -50,6 +50,8 @@ The following major improvements have been implemented:
 - **N+1 Query Elimination**: Replaced individual tag queries with efficient JOIN operations
 - **SQL Aggregation**: Optimized balance calculations using database-level aggregation
 - **Connection Pooling**: Implemented across all database operations for better resource management
+- **Centralized Query Handler**: Refactored to use a shared handler to standardize errors and resource safety
+- **Pagination Offset Utility**: Added helper to compute `offset/limit` for consistent paginated queries
 
 ### UI Component Consolidation  
 - **Function Merging**: Consolidated duplicate `_update_account_balance` functions
@@ -62,4 +64,3 @@ The following major improvements have been implemented:
 - **Import Cleanup**: Removed unused imports and organized dependencies
 - **Debug Cleanup**: Removed debugging print statements and TODO comments
 - **Error Handling**: Standardized error handling patterns across the codebase
-

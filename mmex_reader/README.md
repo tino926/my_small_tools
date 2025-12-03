@@ -31,6 +31,7 @@ A comprehensive Kivy-based Python application for reading, analyzing, and visual
   - `config_manager.py`: Configuration management with validation
   - `kv_components.py`: Kivy language compatible components
 - **Performance Optimized**: Eliminates N+1 queries, uses SQL aggregation, and implements efficient data loading
+- **Caching**: Caches transaction results to accelerate repeated loads and pagination
 - **Unicode Support**: Configurable fonts for displaying international characters
 - **Robust Error Handling**: Comprehensive error handling with user-friendly feedback and detailed error logging
 
