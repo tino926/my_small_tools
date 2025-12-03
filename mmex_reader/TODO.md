@@ -15,6 +15,7 @@ After reviewing your MMEX Kivy application code, here are several improvement su
    widget for better user experience. ✅ **COMPLETED** - DatePickerButton implemented in ui_components.py.
 - [x] Transaction Details View : Add ability to click on a transaction to see more 
    details or edit it. ✅ **COMPLETED** - Transaction details popup implemented with edit/update/delete functionality.
+- [x] Keyboard Shortcuts : Add `ESC` key to dismiss popups for faster navigation. ✅ **COMPLETED** - ESC support integrated via popup key binding in configuration and UI components.
 
 ## Performance Improvements
 
@@ -54,11 +55,11 @@ The following major improvements have been implemented:
 - **Function Merging**: Consolidated duplicate `_update_account_balance` functions
 - **Label Creation**: Unified multiple label creation functions into `create_styled_label`
 - **UI Updates**: Streamlined tab updates to only refresh necessary components
+- **Popup Styling**: Enhanced popup styling and behavior, including separator color and consistent button layout
 
 ### Code Quality Improvements
 - **Variable Naming**: Replaced unclear single-letter variables with descriptive names
 - **Import Cleanup**: Removed unused imports and organized dependencies
 - **Debug Cleanup**: Removed debugging print statements and TODO comments
 - **Error Handling**: Standardized error handling patterns across the codebase
-
 
