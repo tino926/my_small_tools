@@ -20,6 +20,7 @@ A comprehensive Kivy-based Python application for reading, analyzing, and visual
 - **Sortable Columns**: Click column headers to sort transactions in ascending/descending order
 - **Responsive Layout**: Automatically adapts to different screen sizes with mobile, tablet, and desktop layouts
 - **Account Balance Tracking**: Real-time balance calculations for each account
+- **Keyboard Shortcuts**: Press `ESC` to dismiss popups for quicker navigation
 
 ### Technical Features
 - **Modular Architecture**: Clean separation of concerns with dedicated modules:
