@@ -988,10 +988,12 @@ class MMEXAppLayout(BoxLayout):
         start_date_str = self.start_date_input.get_date() if hasattr(self.start_date_input, 'get_date') else self.start_date_input.text
         end_date_str = self.end_date_input.get_date() if hasattr(self.end_date_input, 'get_date') else self.end_date_input.text
         
+        # Integrate caching: store results keyed by date range and pagination
+        cache_key = self._generate_cache_key(self.current_page, self.page_size)
         transactions_operation = AsyncDatabaseOperation(
             target_func=get_transactions,
             args=(self.db_path, start_date_str, end_date_str, None, self.page_size, self.current_page),
-            success_callback=self._on_transactions_loaded,
+            success_callback=lambda res, ck=cache_key: self._on_transactions_loaded_with_cache(res, ck),
             error_callback=self._on_transactions_error
         )
         transactions_operation.start()
