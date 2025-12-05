@@ -966,21 +966,55 @@ def create_popup(title, content_widget=None, buttons=None, size_hint=(0.8, 0.4),
     return popup
 
 def show_popup(title, message, popup_type='info'):
-    """Show a simple popup with the given title and message.
+    """Show a simple message popup.
+    
+    改進 [2025-11-28]: 統一彈窗顯示實作，集中到單一函式，避免重複定義造成維護困難。
     
     Args:
-        title: The popup title
-        message: The message to display
+        title: Popup title
+        message: Message to display
+        popup_type: Type of popup ('info', 'error', 'warning', 'success')
     """
-    # Use the more flexible create_popup function
-    if isinstance(title, str):
-        tl = title.lower()
-        if 'error' in tl or '錯誤' in tl:
-            popup_type = 'error'
+    # Create message label
+    content = Label(
+        text=message,
+        text_size=(None, None),
+        halign='center',
+        valign='middle'
+    )
+    # Ensure center alignment by coupling text_size to widget size
+    content.bind(size=lambda inst, val: setattr(inst, 'text_size', inst.size))
+    
+    # Set color based on popup type
+    color_map = {
+        'error': ui_config.colors.error,
+        'warning': ui_config.colors.warning,
+        'success': ui_config.colors.success,
+        'info': ui_config.colors.button
+    }
+    # Apply message color based on type for quick visual cue
+    content.color = (0, 0, 0, 1)  # default text color
+    try:
+        # Use a subtle tint via canvas background when possible
+        tint = color_map.get(popup_type, ui_config.colors.button)
+        with content.canvas.before:
+            from kivy.graphics import Color, Rectangle
+            Color(*tint)
+            rect = Rectangle(pos=content.pos, size=content.size)
+            content.bind(pos=lambda inst, val: setattr(rect, 'pos', inst.pos))
+            content.bind(size=lambda inst, val: setattr(rect, 'size', inst.size))
+    except Exception:
+        # Non-critical styling failure; keep functional popup
+        pass
+    
+    # Create and show popup
     popup = create_popup(
         title=title,
-        content_widget=Label(text=message),
-        buttons=[{'text': 'OK', 'callback': lambda instance: popup.dismiss()}],
+        content_widget=content,
+        buttons=[{
+            'text': 'OK',
+            'callback': lambda instance: popup.dismiss()
+        }],
         popup_type=popup_type
     )
     popup.open()
@@ -1301,13 +1335,14 @@ class TransactionDetailsPopup(BaseUIComponent):
         try:
             content = self._create_content()
             
+            # 改進 [2025-11-28]: 修正彈窗顯示方式，避免誤用 show_popup 傳入 Popup 物件
             self.popup = create_popup(
                 title=f"Transaction Details - {self.transaction_data.get('TRANSDATE', 'Unknown Date')}",
                 content=content,
                 size_hint=(0.9, 0.9),
                 auto_dismiss=False
             )
-            show_popup(self.popup)
+            self.popup.open()
             
         except Exception as e:
             logger.error(f"Error showing transaction details popup: {e}")
@@ -1510,45 +1545,7 @@ class TransactionDetailsPopup(BaseUIComponent):
             logger.error(f"Error validating form: {e}")
             return False, ["Validation error occurred"]
     
-    def _validate_form(self):
-        """Validate form fields and return validation status and errors."""
-        errors = []
-        
-        try:
-            # Check required fields based on field_configs
-            for field_config in self.field_configs:
-                field_key = field_config['key']
-                field_name = field_config['label']
-                is_required = field_config.get('required', False)
-                
-                if is_required and field_key in self.input_fields:
-                    widget = self.input_fields[field_key]
-                    value = getattr(widget, 'text', '').strip()
-                    
-                    if not value:
-                        errors.append(f"{field_name} is required")
-                        continue
-                    
-                    # Validate amount field
-                    if field_key == 'TRANSAMOUNT':
-                        try:
-                            # Remove currency symbols and convert
-                            amount_str = value.replace('$', '').replace(',', '').strip()
-                            if amount_str:
-                                float(amount_str)
-                        except ValueError:
-                            errors.append(f"Invalid {field_name} format")
-                    
-                    # Validate date field
-                    elif field_key == 'TRANSDATE':
-                        if not self._validate_date_format(value):
-                            errors.append(f"Invalid {field_name} format")
-            
-            return len(errors) == 0, errors
-            
-        except Exception as e:
-            logger.error(f"Error validating form: {e}")
-            return False, ["Validation error occurred"]
+    # 改進 [2025-11-28]: 移除重複的 _validate_form 定義，統一使用 tuple 型 field_configs 與對應 validator
     
     def _validate_date_format(self, date_str):
         """Validate date format using shared error_handling helper."""
@@ -1564,12 +1561,13 @@ class TransactionDetailsPopup(BaseUIComponent):
             is_valid, errors = self._validate_form()
             if not is_valid:
                 error_message = "\n".join(errors)
+                # 改進 [2025-11-28]: 彈窗建立後直接 open()，不再傳入 show_popup
                 popup = create_popup(
                     title='Validation Error',
                     content=self.create_label(error_message),
                     size_hint=(0.6, 0.4)
                 )
-                show_popup(popup)
+                popup.open()
                 return
             
             # Collect updated data from input fields
@@ -1621,13 +1619,14 @@ class TransactionDetailsPopup(BaseUIComponent):
             content_layout.add_widget(button_layout)
             
             # Create and show confirmation popup
+            # 改進 [2025-11-28]: 彈窗建立後直接 open()，不再傳入 show_popup
             self.confirm_popup = create_popup(
                 title='Confirm Delete',
                 content=content_layout,
                 size_hint=(0.6, 0.4),
                 auto_dismiss=False
             )
-            show_popup(self.confirm_popup)
+            self.confirm_popup.open()
             
         except Exception as e:
             logger.error(f"Error showing delete confirmation: {e}")
