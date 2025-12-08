@@ -1,4 +1,5 @@
-"""Visualization utilities for the MMEX Kivy application.
+"""
+Visualization utilities for the MMEX Kivy application.
 
 This module provides classes and functions for creating and displaying
 financial data visualizations using Matplotlib and Kivy.
@@ -313,7 +314,8 @@ class VisualizationTab(BoxLayout):
                 "Asset Distribution": create_asset_distribution_chart,
                 "Monthly Budget Comparison": create_monthly_budget_comparison_chart,
                 "Transaction Frequency": create_transaction_frequency_chart,
-                "Cash Flow Analysis": create_cashflow_chart
+                "Cash Flow Analysis": create_cashflow_chart,
+                "Summary Statistics": create_summary_statistics_widget
             }
             
             chart_function = chart_functions.get(self.chart_type, create_spending_by_category_chart)
@@ -355,7 +357,8 @@ class VisualizationTab(BoxLayout):
                 ("Asset Distribution", "💰 Pie chart showing asset distribution by account"),
                 ("Monthly Budget Comparison", "📋 Compare monthly spending to budget"),
                 ("Transaction Frequency", "📅 Transaction activity by day of week"),
-                ("Cash Flow Analysis", "💸 Net cash flow analysis over time")
+                ("Cash Flow Analysis", "💸 Net cash flow analysis over time"),
+                ("Summary Statistics", "📄 A summary of financial statistics")
             ]
             
             for chart_type, description in chart_types:
@@ -1103,3 +1106,72 @@ def create_cashflow_chart(transactions_df):
         raise
     except Exception as e:
         raise ChartCreationError(f"Failed to create cash flow chart: {str(e)}")
+
+@handle_chart_error
+def create_summary_statistics_widget(transactions_df):
+    """Create a widget to display summary statistics.
+    
+    Args:
+        transactions_df: DataFrame containing transaction data
+        
+    Returns:
+        A BoxLayout widget containing the summary statistics
+    """
+    validate_dataframe(transactions_df, ['TRANSCODE', 'TRANSAMOUNT'], min_rows=1)
+    
+    try:
+        # Create a copy to avoid modifying original data
+        df_copy = transactions_df.copy()
+        
+        # Safely convert amounts to numeric
+        df_copy['TRANSAMOUNT'] = safe_numeric_conversion(df_copy['TRANSAMOUNT'], 'TRANSAMOUNT')
+        
+        # Calculate statistics
+        total_income = df_copy[df_copy['TRANSCODE'] == 'Deposit']['TRANSAMOUNT'].sum()
+        total_expenses = df_copy[df_copy['TRANSCODE'] == 'Withdrawal']['TRANSAMOUNT'].sum()
+        net_savings = total_income - total_expenses
+        num_transactions = len(df_copy)
+        avg_transaction_value = df_copy['TRANSAMOUNT'].mean()
+        
+        # Create main layout
+        summary_layout = BoxLayout(orientation='vertical', padding=20, spacing=15)
+        
+        # Title
+        title = Label(
+            text="Financial Summary",
+            font_size='22sp',
+            bold=True,
+            size_hint=(1, 0.2),
+            color=HEADER_COLOR
+        )
+        summary_layout.add_widget(title)
+        
+        # Create a grid for the statistics
+        stats_grid = BoxLayout(orientation='vertical', spacing=10)
+        
+        # Helper to create styled labels
+        def create_stat_label(title, value, color=(0, 0, 0, 1)):
+            stat_box = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40)
+            stat_box.add_widget(Label(text=title, font_size='16sp', halign='left', color=(0.2, 0.2, 0.2, 1)))
+            stat_box.add_widget(Label(text=value, font_size='16sp', bold=True, halign='right', color=color))
+            return stat_box
+
+        # Add stats to grid
+        stats_grid.add_widget(create_stat_label("Total Income:", f"${total_income:,.2f}", (0.1, 0.6, 0.1, 1)))
+        stats_grid.add_widget(create_stat_label("Total Expenses:", f"${total_expenses:,.2f}", (0.8, 0.2, 0.2, 1)))
+        
+        # Determine color for net savings
+        net_savings_color = (0.1, 0.6, 0.1, 1) if net_savings >= 0 else (0.8, 0.2, 0.2, 1)
+        stats_grid.add_widget(create_stat_label("Net Savings:", f"${net_savings:,.2f}", net_savings_color))
+        
+        stats_grid.add_widget(create_stat_label("Number of Transactions:", str(num_transactions)))
+        stats_grid.add_widget(create_stat_label("Average Transaction Value:", f"${avg_transaction_value:,.2f}"))
+
+        summary_layout.add_widget(stats_grid)
+        
+        return summary_layout
+
+    except Exception as e:
+        logger.error(f"Error creating summary statistics widget: {str(e)}")
+        # Return a generic error label if something goes wrong
+        return Label(text=f"Could not generate summary: {e}", color=(1, 0, 0, 1))
