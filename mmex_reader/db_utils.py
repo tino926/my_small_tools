@@ -53,19 +53,28 @@ PAYEE_TABLE: str = "PAYEE_V1"
 TAG_TABLE: str = "TAG_V1"
 TAGLINK_TABLE: str = "TAGLINK_V1"
 
-# MMEX database schema constants - Account types
-CHECKING_ACCOUNT_TYPE: str = "'Checking Account'"
-TERMDEPOSIT_ACCOUNT_TYPE: str = "'Term Deposit'"
-INVESTMENT_ACCOUNT_TYPE: str = "'Investment Account'"
-STOCK_ACCOUNT_TYPE: str = "'Stock'"
-MONEY_ACCOUNT_TYPE: str = "'Money'"
-CREDIT_CARD_ACCOUNT_TYPE: str = "'Credit Card'"
-LOAN_ACCOUNT_TYPE: str = "'Loan'"
-ASSET_ACCOUNT_TYPE: str = "'Asset'"
-
-# Database query constants
-DEFAULT_QUERY_TIMEOUT: int = 30  # seconds
-MAX_RETRY_ATTEMPTS: int = 3
+# MMEX database schema constants - Account table columns
+ACCOUNT_COLS: Dict[str, str] = {
+    "id": "ACCOUNTID",
+    "name": "ACCOUNTNAME",
+    "type": "ACCOUNTTYPE",
+    "initial_balance": "INITIALBAL",
+    "is_favorite": "FAVORITEACCT",
+    "currency_id": "CURRENCYID",
+    "status": "STATUS",
+    "notes": "NOTES",
+    "held_at": "HELDAT",
+    "website": "WEBSITE",
+    "contact_info": "CONTACTINFO",
+    "access_info": "ACCESSINFO",
+    "statement_locked": "STATEMENTLOCKED",
+    "statement_date": "STATEMENTDATE",
+    "min_balance": "MINIMUMBALANCE",
+    "credit_limit": "CREDITLIMIT",
+    "interest_rate": "INTERESTRATE",
+    "payment_due_date": "PAYMENTDUEDATE",
+    "min_payment": "MINIMUMPAYMENT"
+}
 
 # Application configuration
 class DatabaseConfig:
@@ -482,31 +491,15 @@ def get_all_accounts(db_path: str) -> Tuple[Optional[str], pd.DataFrame]:
         if not conn:
             logger.error("Could not get a database connection from the pool")
             return "Could not get a database connection from the pool", pd.DataFrame()
-            
+        
+        # Dynamically build the list of columns to select
+        columns_to_select = ", ".join(ACCOUNT_COLS.values())
+        
         query = f"""
-        SELECT 
-            ACCOUNTID, 
-            ACCOUNTNAME, 
-            ACCOUNTTYPE, 
-            INITIALBAL, 
-            FAVORITEACCT, 
-            CURRENCYID, 
-            STATUS,
-            NOTES,
-            HELDAT,
-            WEBSITE,
-            CONTACTINFO,
-            ACCESSINFO,
-            STATEMENTLOCKED,
-            STATEMENTDATE,
-            MINIMUMBALANCE,
-            CREDITLIMIT,
-            INTERESTRATE,
-            PAYMENTDUEDATE,
-            MINIMUMPAYMENT
+        SELECT {columns_to_select}
         FROM {ACCOUNT_TABLE}
-        WHERE STATUS = 'Open'
-        ORDER BY ACCOUNTNAME
+        WHERE {ACCOUNT_COLS['status']} = 'Open'
+        ORDER BY {ACCOUNT_COLS['name']}
         """
         
         error, accounts_df = handle_database_query(conn, query)
