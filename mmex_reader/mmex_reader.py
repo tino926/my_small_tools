@@ -592,25 +592,78 @@ class MMEXReader:
 
 def main() -> None:
     """Main entry point for command-line usage."""
+    import argparse
+
+    # Setup command-line argument parser
+    parser = argparse.ArgumentParser(
+        description="MMEX (MoneyManagerEx) Database Reader.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument(
+        '--start-date',
+        dest='start_date',
+        type=str,
+        default=os.getenv("MMEX_START_DATE", "2025-01-01"),
+        help="Start date for transactions (YYYY-MM-DD)."
+    )
+    parser.add_argument(
+        '--end-date',
+        dest='end_date',
+        type=str,
+        default=os.getenv("MMEX_END_DATE", "2025-05-31"),
+        help="End date for transactions (YYYY-MM-DD)."
+    )
+    parser.add_argument(
+        '--db-path',
+        dest='db_file_path',
+        type=str,
+        default=os.getenv("DB_FILE_PATH"),
+        help="Path to the .mmb database file. Overrides DB_FILE_PATH in .env."
+    )
+    parser.add_argument(
+        '--no-schema',
+        action='store_false',
+        dest='show_schema',
+        help="Do not display the database schema."
+    )
+    parser.add_argument(
+        '--no-transactions',
+        action='store_false',
+        dest='show_transactions',
+        help="Do not display transactions."
+    )
+
+    args = parser.parse_args()
+
     try:
-        # Ensure .env variables are loaded before reading environment
+        # Load .env but prioritize command-line arguments
         load_dotenv()
-        # Create configuration from environment
-        config = MMEXReaderConfig.from_env()
+        
+        # Create configuration from a combination of args and environment variables
+        config = MMEXReaderConfig(
+            start_date=args.start_date,
+            end_date=args.end_date,
+            db_file_path=args.db_file_path or os.getenv("DB_FILE_PATH"),
+            show_schema=args.show_schema,
+            show_transactions=args.show_transactions
+        )
         
         # Validate database file path
         if not config.db_file_path:
-            print("Error: DB_FILE_PATH not found in .env file or environment variables.")
+            print("Error: Database path not provided. Set --db-path or DB_FILE_PATH in the .env file.")
+            parser.print_help()
             return
         
         # Create and run reader
         reader = MMEXReader(config)
         reader.run_analysis()
         
-    except Exception as e:
-        logger.error(f"Error in main: {e}")
+    except (ValueError, FileNotFoundError) as e:
+        logger.error(f"Configuration or file error: {e}")
         print(f"Error: {e}")
-
+    except Exception as e:
+        logger.error(f"An unexpected error occurred in main: {e}")
+        print(f"An unexpected error occurred: {e}")
 
 if __name__ == "__main__":
     main()
