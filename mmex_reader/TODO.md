@@ -64,3 +64,4 @@ The following major improvements have been implemented:
 - **Import Cleanup**: Removed unused imports and organized dependencies
 - **Debug Cleanup**: Removed debugging print statements and TODO comments
 - **Error Handling**: Standardized error handling patterns across the codebase
+- **Account Columns Mapping**: Centralized account column names into a dictionary in `db_utils.py` to improve maintainability and reduce hardcoded strings (refactor)
