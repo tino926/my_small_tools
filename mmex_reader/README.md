@@ -158,6 +158,28 @@ interactions with the MMEX database.
    *Note: To change the query date range for this script, you must edit the 
    `START_DATE_STR` and `END_DATE_STR` variables directly in `mmex_reader.py`.*
 
+### Command-Line Options
+
+`mmex_reader.py` 支援以下參數以改善命令列使用體驗：
+
+- `--start-date YYYY-MM-DD`：設定交易查詢起始日期（預設來自環境變數 `MMEX_START_DATE`）。
+- `--end-date YYYY-MM-DD`：設定交易查詢結束日期（預設來自環境變數 `MMEX_END_DATE`）。
+- `--db-path <path>`：指定 `.mmb` 資料庫檔案路徑，優先於 `.env` 的 `DB_FILE_PATH`。
+- `--no-schema`：不顯示資料庫結構。
+- `--no-transactions`：不顯示交易資料。
+
+範例：
+
+```bash
+python mmex_reader.py --db-path "C:/data/mymoney.mmb" --start-date 2025-01-01 --end-date 2025-05-31
+```
+
+顯示說明：
+
+```bash
+python mmex_reader.py --help
+```
+
 ## MMEX Database Schema
 
 The application interacts with MMEX database schema and is designed to work with standard MMEX database structures. The modular architecture allows for easy adaptation to different schema versions:
