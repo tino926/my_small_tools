@@ -35,6 +35,8 @@ __all__ = [
     'validate_date_range',
     'is_valid_date_format',
     'is_valid_date_range',
+    'validate_amount',
+    'is_valid_amount',
     'DATE_FORMAT',
     'DEFAULT_ERROR_MESSAGES'
 ]
@@ -76,6 +78,7 @@ DEFAULT_ERROR_MESSAGES = {
     'invalid_date_string': "Invalid date string: '{date_str}'. Must be a non-empty string",
     'invalid_date_range': "Start date '{start}' must be before or equal to end date '{end}'",
     'validation_error': "Validation error: {error}",
+    'invalid_amount_format': "Invalid {field} format: '{value}'",
     
     # Input validation errors
     'invalid_connection': "Invalid database connection provided",
@@ -364,6 +367,54 @@ def is_valid_date_range(start_date_str: str, end_date_str: str) -> bool:
     try:
         error = validate_date_range(start_date_str, end_date_str)
         return error is None
+    except Exception as e:
+        logger.error(DEFAULT_ERROR_MESSAGES['unexpected_error'].format(error=e))
+        return False
+
+
+def validate_amount(amount: Any, field_name: str = "amount") -> Tuple[Optional[str], Optional[float]]:
+    """Validate and parse amount value into float.
+
+    Accepts numeric types and strings with optional currency symbols or separators,
+    e.g., "$1,234.56" or "-987.00". Returns a standardized error message on failure.
+
+    Args:
+        amount: Input amount value (str or number)
+        field_name: Field name for error message context
+
+    Returns:
+        Tuple[Optional[str], Optional[float]]: (error_message, parsed_float)
+    """
+    try:
+        if amount is None:
+            return DEFAULT_ERROR_MESSAGES['invalid_amount_format'].format(field=field_name, value=amount), None
+
+        if isinstance(amount, (int, float)):
+            return None, float(amount)
+
+        if isinstance(amount, str):
+            s = amount.strip()
+            if not s:
+                return DEFAULT_ERROR_MESSAGES['invalid_amount_format'].format(field=field_name, value=amount), None
+            s = s.replace('$', '').replace(',', '')
+            # Allow leading plus/minus and decimal
+            try:
+                return None, float(s)
+            except ValueError:
+                return DEFAULT_ERROR_MESSAGES['invalid_amount_format'].format(field=field_name, value=amount), None
+
+        return DEFAULT_ERROR_MESSAGES['invalid_amount_format'].format(field=field_name, value=amount), None
+    except Exception as e:
+        err = DEFAULT_ERROR_MESSAGES['unexpected_error'].format(error=e)
+        logger.error(err)
+        return err, None
+
+
+def is_valid_amount(amount: Any) -> bool:
+    """Boolean wrapper for amount validation."""
+    try:
+        error, parsed = validate_amount(amount)
+        return error is None and parsed is not None
     except Exception as e:
         logger.error(DEFAULT_ERROR_MESSAGES['unexpected_error'].format(error=e))
         return False
