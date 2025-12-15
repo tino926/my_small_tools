@@ -8,7 +8,17 @@ import threading
 import logging
 from typing import Callable, Any, Optional
 from functools import wraps
-from kivy.clock import Clock
+try:
+    from kivy.clock import Clock  # type: ignore
+except Exception:
+    class _FallbackClock:
+        @staticmethod
+        def schedule_once(func, dt=0):
+            try:
+                func(dt)
+            except TypeError:
+                func()
+    Clock = _FallbackClock()
 
 logger = logging.getLogger(__name__)
 
