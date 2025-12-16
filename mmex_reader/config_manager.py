@@ -11,18 +11,17 @@ from dataclasses import dataclass, asdict
 from typing import Optional, Dict, Any
 from pathlib import Path
 
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.button import Button
-from kivy.uix.filechooser import FileChooserListView
-from kivy.uix.label import Label
-from kivy.uix.popup import Popup
-from kivy.core.window import Window
-from ui_components import show_popup
-from kivy.uix.spinner import Spinner
-from kivy.uix.switch import Switch
-from kivy.uix.textinput import TextInput
-from kivy.uix.gridlayout import GridLayout
-from kivy.uix.scrollview import ScrollView
+try:
+    from ui_components import show_popup
+except Exception:
+    def show_popup(title, text, popup_type='info'):
+        print(f"{title}: {text}")
+
+try:
+    from kivy.uix.popup import Popup as BasePopup
+except Exception:
+    class BasePopup:
+        pass
 
 
 @dataclass
@@ -189,10 +188,22 @@ class ConfigManager:
             raise ValueError("; ".join(errors))
 
 
-class SettingsPopup(Popup):
+class SettingsPopup(BasePopup):
     """Settings configuration popup window."""
     
     def __init__(self, config_manager: ConfigManager, **kwargs):
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.button import Button
+        from kivy.uix.filechooser import FileChooserListView
+        from kivy.uix.label import Label
+        from kivy.uix.popup import Popup
+        from kivy.core.window import Window
+        from kivy.uix.spinner import Spinner
+        from kivy.uix.switch import Switch
+        from kivy.uix.textinput import TextInput
+        from kivy.uix.gridlayout import GridLayout
+        from kivy.uix.scrollview import ScrollView
+
         super().__init__(**kwargs)
         self.config_manager = config_manager
         self.config = config_manager.get_config()
@@ -279,6 +290,7 @@ class SettingsPopup(Popup):
         return False
     
     def _add_section_header(self, layout, title):
+        from kivy.uix.label import Label
         """Add a section header to the layout."""
         header = Label(
             text=f"[b]{title}[/b]",
@@ -291,6 +303,8 @@ class SettingsPopup(Popup):
         layout.add_widget(Label())  # Empty cell for spacing
     
     def _add_text_input(self, layout, label_text, value, config_key):
+        from kivy.uix.label import Label
+        from kivy.uix.textinput import TextInput
         """Add a text input field."""
         layout.add_widget(Label(text=label_text, size_hint_y=None, height=35))
         text_input = TextInput(text=str(value), multiline=False, size_hint_y=None, height=35)
@@ -298,6 +312,8 @@ class SettingsPopup(Popup):
         self.input_widgets[config_key] = text_input
     
     def _add_number_input(self, layout, label_text, value, config_key):
+        from kivy.uix.label import Label
+        from kivy.uix.textinput import TextInput
         """Add a number input field."""
         layout.add_widget(Label(text=label_text, size_hint_y=None, height=35))
         number_input = TextInput(text=str(value), multiline=False, input_filter='int', size_hint_y=None, height=35)
@@ -305,6 +321,8 @@ class SettingsPopup(Popup):
         self.input_widgets[config_key] = number_input
     
     def _add_switch(self, layout, label_text, value, config_key):
+        from kivy.uix.label import Label
+        from kivy.uix.switch import Switch
         """Add a switch (boolean) input."""
         layout.add_widget(Label(text=label_text, size_hint_y=None, height=35))
         switch = Switch(active=value, size_hint_y=None, height=35)
@@ -312,6 +330,8 @@ class SettingsPopup(Popup):
         self.input_widgets[config_key] = switch
     
     def _add_spinner(self, layout, label_text, value, options, config_key):
+        from kivy.uix.label import Label
+        from kivy.uix.spinner import Spinner
         """Add a spinner (dropdown) input."""
         layout.add_widget(Label(text=label_text, size_hint_y=None, height=35))
         spinner = Spinner(text=str(value), values=options, size_hint_y=None, height=35)
@@ -319,6 +339,10 @@ class SettingsPopup(Popup):
         self.input_widgets[config_key] = spinner
     
     def _add_file_picker(self, layout, label_text, value, config_key, select_dir=False):
+        from kivy.uix.label import Label
+        from kivy.uix.textinput import TextInput
+        from kivy.uix.button import Button
+        from kivy.uix.boxlayout import BoxLayout
         """Add a file picker input."""
         layout.add_widget(Label(text=label_text, size_hint_y=None, height=35))
         
@@ -338,6 +362,10 @@ class SettingsPopup(Popup):
         self.input_widgets[config_key] = text_input
     
     def _show_file_chooser(self, text_input, select_dir=False):
+        from kivy.uix.filechooser import FileChooserListView
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.button import Button
+        from kivy.uix.popup import Popup
         """Show file chooser dialog."""
         file_chooser = FileChooserListView()
         if text_input.text and os.path.exists(text_input.text):
@@ -371,6 +399,12 @@ class SettingsPopup(Popup):
         file_popup.open()
     
     def _save_settings(self, instance):
+        from kivy.uix.popup import Popup
+        from kivy.uix.label import Label
+        from kivy.uix.textinput import TextInput
+        from kivy.uix.spinner import Spinner
+        from kivy.uix.switch import Switch
+        from kivy.clock import Clock
         """Save the current settings."""
         try:
             # Collect values from input widgets
@@ -400,7 +434,6 @@ class SettingsPopup(Popup):
             success_popup.open()
             
             # Close after a delay
-            from kivy.clock import Clock
             Clock.schedule_once(lambda dt: success_popup.dismiss(), 2)
             Clock.schedule_once(lambda dt: self.dismiss(), 2.5)
             
@@ -408,6 +441,9 @@ class SettingsPopup(Popup):
             show_popup("Error", f"Error saving settings: {str(e)}", popup_type='error')
     
     def _reset_to_defaults(self, instance):
+        from kivy.uix.textinput import TextInput
+        from kivy.uix.switch import Switch
+        from kivy.uix.spinner import Spinner
         """Reset all settings to default values."""
         default_config = AppConfig()
         
