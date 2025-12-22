@@ -126,41 +126,136 @@ def safe_numeric_conversion(series, column_name):
         )
 
 
-def optimize_chart_data(df, max_categories=10, min_amount_threshold=0.01):
-    """Optimize data for chart display by limiting categories and filtering small amounts.
-    
+def optimize_chart_data(df, max_categories=10, min_amount_threshold=0.01, max_data_points=100):
+    """Optimize data for chart display by limiting categories, filtering small amounts, and sampling large datasets.
+
     Args:
         df: DataFrame to optimize
         max_categories: Maximum number of categories to display
         min_amount_threshold: Minimum amount threshold (as percentage of total)
-        
+        max_data_points: Maximum number of data points before applying sampling
+
     Returns:
         Optimized DataFrame
     """
     if df.empty:
         return df
-    
-    # Calculate total amount for threshold calculation
-    total_amount = df['TRANSAMOUNT'].sum()
-    min_amount = total_amount * min_amount_threshold
-    
-    # Filter out very small amounts
-    filtered_df = df[df['TRANSAMOUNT'] >= min_amount]
-    
-    # If we still have too many categories, keep only the top ones
-    if len(filtered_df) > max_categories:
-        filtered_df = filtered_df.head(max_categories)
-        
-        # Add "Others" category for remaining amounts
-        remaining_amount = df[~df.index.isin(filtered_df.index)]['TRANSAMOUNT'].sum()
-        if remaining_amount > 0:
-            others_row = pd.DataFrame({
-                'CATEGNAME': ['Others'],
-                'TRANSAMOUNT': [remaining_amount]
-            })
-            filtered_df = pd.concat([filtered_df, others_row], ignore_index=True)
-    
-    return filtered_df
+
+    # If we have too many data points, apply sampling strategy
+    if len(df) > max_data_points:
+        logger.info(f"Applying sampling strategy for large dataset with {len(df)} records")
+        df = apply_intelligent_sampling(df, max_data_points)
+
+    # For categorical data, apply category limiting
+    if 'CATEGNAME' in df.columns:
+        # Calculate total amount for threshold calculation
+        total_amount = df['TRANSAMOUNT'].sum()
+        min_amount = total_amount * min_amount_threshold
+
+        # Filter out very small amounts
+        filtered_df = df[df['TRANSAMOUNT'] >= min_amount]
+
+        # If we still have too many categories, keep only the top ones
+        if len(filtered_df) > max_categories:
+            filtered_df = filtered_df.head(max_categories)
+
+            # Add "Others" category for remaining amounts
+            remaining_amount = df[~df.index.isin(filtered_df.index)]['TRANSAMOUNT'].sum()
+            if remaining_amount > 0:
+                others_row = pd.DataFrame({
+                    'CATEGNAME': ['Others'],
+                    'TRANSAMOUNT': [remaining_amount]
+                })
+                filtered_df = pd.concat([filtered_df, others_row], ignore_index=True)
+
+        return filtered_df
+    else:
+        # For non-categorical data, just apply the max_data_points limit
+        if len(df) > max_data_points:
+            return df.sample(n=max_data_points, random_state=42).sort_index()
+        return df
+
+
+def apply_intelligent_sampling(df, max_points):
+    """Apply intelligent sampling to large datasets while preserving data characteristics.
+
+    Args:
+        df: DataFrame to sample
+        max_points: Maximum number of points to keep
+
+    Returns:
+        Sampled DataFrame that preserves data distribution
+    """
+    if len(df) <= max_points:
+        return df
+
+    # If the dataframe has date information, use time-based sampling
+    if 'TRANSDATE' in df.columns:
+        try:
+            df_sampled = df.copy()
+            df_sampled['TRANSDATE'] = pd.to_datetime(df_sampled['TRANSDATE'])
+
+            # Sort by date to ensure temporal distribution is preserved
+            df_sampled = df_sampled.sort_values('TRANSDATE')
+
+            # Use numpy.linspace to get evenly spaced indices
+            step = len(df_sampled) / max_points
+            indices = [int(i * step) for i in range(max_points)]
+
+            # Ensure we don't exceed the available index range
+            indices = [idx for idx in indices if idx < len(df_sampled)]
+            return df_sampled.iloc[indices].copy()
+        except Exception as e:
+            logger.warning(f"Failed to apply time-based sampling: {e}, falling back to random sampling")
+
+    # If no date information or time-based sampling failed, use stratified sampling based on TRANSCODE
+    if 'TRANSCODE' in df.columns:
+        try:
+            # Sample proportionally from each transaction type
+            sampled_dfs = []
+            transcodes = df['TRANSCODE'].unique()
+            remaining_points = max_points
+
+            # Calculate proportional allocation but ensure each group gets at least 1 if it exists
+            transcode_counts = {tc: len(df[df['TRANSCODE'] == tc]) for tc in transcodes}
+            total_records = sum(transcode_counts.values())
+
+            for transcode in transcodes:
+                group_size = transcode_counts[transcode]
+                # Proportional allocation ensuring at least 1 point per group if possible
+                n_sample = max(1, int(max_points * group_size / total_records))
+                n_sample = min(n_sample, group_size, remaining_points)
+
+                if n_sample > 0:
+                    sampled_df = df[df['TRANSCODE'] == transcode].sample(n=n_sample, random_state=42)
+                    sampled_dfs.append(sampled_df)
+                    remaining_points -= n_sample
+
+            # If we have remaining points after proportional allocation, distribute them
+            result_df = pd.concat(sampled_dfs, ignore_index=True) if sampled_dfs else pd.DataFrame()
+
+            if len(result_df) < max_points and len(result_df) < len(df):
+                # If we didn't reach the max_points, we may need to sample additional records
+                # This handles edge cases where rounding led to fewer samples
+                missing_points = min(max_points - len(result_df), len(df) - len(result_df))
+                if missing_points > 0:
+                    # Get remaining unsampled indices
+                    sampled_indices = set(result_df.index)
+                    remaining_df = df[~df.index.isin(sampled_indices)]
+                    if not remaining_df.empty:
+                        additional_sample = remaining_df.sample(n=min(missing_points, len(remaining_df)), random_state=42)
+                        result_df = pd.concat([result_df, additional_sample], ignore_index=True)
+
+            # If still too large due to rounding, do a final sample
+            if len(result_df) > max_points:
+                return result_df.sample(n=max_points, random_state=42).copy()
+
+            return result_df
+        except Exception as e:
+            logger.warning(f"Failed to apply stratified sampling: {e}, falling back to random sampling")
+
+    # If all else fails, use simple random sampling
+    return df.sample(n=max_points, random_state=42).copy()
 
 
 class VisualizationTab(BoxLayout):
@@ -448,7 +543,7 @@ def create_spending_by_category_chart(transactions_df):
     
     # Sort by amount and optimize data
     category_spending = category_spending.sort_values('TRANSAMOUNT', ascending=False)
-    category_spending = optimize_chart_data(category_spending, max_categories=8)
+    category_spending = optimize_chart_data(category_spending, max_categories=8, max_data_points=50)
     
     try:
         # Create figure with better layout
