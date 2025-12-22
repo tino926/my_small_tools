@@ -6,18 +6,6 @@ including counting total records and managing pagination state.
 
 import logging
 from typing import Optional, Tuple
-import pandas as pd
-
-from mmex_reader.error_handling import handle_database_query, is_valid_date_format, validate_date_range, is_valid_date_range
-from mmex_reader.db_utils import (
-    TRANSACTION_TABLE,
-    ACCOUNT_TABLE,
-    CATEGORY_TABLE,
-    SUBCATEGORY_TABLE,
-    PAYEE_TABLE,
-    _connection_pool,
-    _ensure_pool_for_path,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +36,21 @@ def get_transaction_count(db_path: str, start_date_str: Optional[str] = None,
     if not db_path:
         logger.error("Invalid database path provided")
         return "Invalid database path", 0
+
+    try:
+        from mmex_reader.error_handling import handle_database_query, is_valid_date_format, validate_date_range
+        from mmex_reader.db_utils import (
+            TRANSACTION_TABLE,
+            _connection_pool,
+            _ensure_pool_for_path,
+        )
+    except Exception:
+        from error_handling import handle_database_query, is_valid_date_format, validate_date_range
+        from db_utils import (
+            TRANSACTION_TABLE,
+            _connection_pool,
+            _ensure_pool_for_path,
+        )
 
     # Ensure connection pool is initialized for the provided path
     init_error = None
