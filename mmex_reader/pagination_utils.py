@@ -17,9 +17,12 @@ def get_offset_limit(page: int, page_size: int) -> Tuple[int, int]:
     page = 1 if page is None or page <= 0 else page
     return (page - 1) * page_size, page_size
 
-def get_transaction_count(db_path: str, start_date_str: Optional[str] = None, 
-                         end_date_str: Optional[str] = None, 
-                         account_id: Optional[int] = None) -> Tuple[Optional[str], int]:
+def get_transaction_count(
+    db_path: str,
+    start_date_str: Optional[str] = None,
+    end_date_str: Optional[str] = None,
+    account_id: Optional[int] = None,
+) -> Tuple[Optional[str], int]:
     """Get the total count of transactions matching the given criteria.
 
     Args:
@@ -141,6 +144,12 @@ class PaginationInfo:
         self.total_count = total_count
         self.page_size = page_size
         self.current_page = max(1, current_page)
+
+    @property
+    def effective_page(self) -> int:
+        if self.total_pages <= 0:
+            return 1
+        return min(max(1, self.current_page), self.total_pages)
         
     @property
     def total_pages(self) -> int:
@@ -152,12 +161,14 @@ class PaginationInfo:
     @property
     def has_previous(self) -> bool:
         """Check if there's a previous page."""
-        return self.current_page > 1
+        return self.effective_page > 1
     
     @property
     def has_next(self) -> bool:
         """Check if there's a next page."""
-        return self.current_page < self.total_pages
+        if self.total_pages <= 0:
+            return False
+        return self.effective_page < self.total_pages
     
     @property
     def start_index(self) -> int:
@@ -165,9 +176,7 @@ class PaginationInfo:
         # No records or invalid page size yields no range
         if self.total_count == 0 or self.page_size <= 0:
             return 0
-        # Clamp current page within valid bounds to avoid invalid ranges
-        page = min(max(1, self.current_page), self.total_pages)
-        return (page - 1) * self.page_size + 1
+        return (self.effective_page - 1) * self.page_size + 1
     
     @property
     def end_index(self) -> int:
@@ -175,13 +184,26 @@ class PaginationInfo:
         # No records or invalid page size yields no range
         if self.total_count == 0 or self.page_size <= 0:
             return 0
-        # Clamp current page within valid bounds
-        page = min(max(1, self.current_page), self.total_pages)
-        end = page * self.page_size
+        end = self.effective_page * self.page_size
         return min(end, self.total_count)
+
+    @property
+    def offset(self) -> int:
+        offset, _ = get_offset_limit(self.effective_page, self.page_size)
+        return offset
+
+    @property
+    def limit(self) -> int:
+        _, limit = get_offset_limit(self.effective_page, self.page_size)
+        return limit
     
     def get_page_info_text(self) -> str:
         """Get formatted pagination info text."""
         if self.total_count == 0:
             return "No records found"
-        return f"Showing {self.start_index}-{self.end_index} of {self.total_count} transactions (Page {self.current_page} of {self.total_pages})"
+        if self.total_pages <= 0:
+            return f"Showing 0-0 of {self.total_count} transactions (Invalid page size)"
+        return (
+            f"Showing {self.start_index}-{self.end_index} of {self.total_count} "
+            f"transactions (Page {self.effective_page} of {self.total_pages})"
+        )
