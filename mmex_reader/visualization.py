@@ -15,9 +15,65 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 import logging
+import hashlib
+import time
+from typing import Dict, Any, Optional
 
 # Configure logging for visualization module
 logger = logging.getLogger(__name__)
+
+# Configure caching for visualization
+class VisualizationCache:
+    """Simple cache for visualization charts to reduce redundant computations."""
+
+    def __init__(self, max_size: int = 10, ttl_seconds: int = 300):
+        """
+        Initialize the visualization cache.
+
+        Args:
+            max_size: Maximum number of cached items
+            ttl_seconds: Time-to-live for cached items in seconds
+        """
+        self.max_size = max_size
+        self.ttl_seconds = ttl_seconds
+        self._cache: Dict[str, Dict[str, Any]] = {}
+
+    def get(self, key: str) -> Optional[Any]:
+        """Get an item from the cache if it exists and hasn't expired."""
+        if key in self._cache:
+            cached = self._cache[key]
+            current_time = time.time()
+
+            if current_time - cached['timestamp'] < self.ttl_seconds:
+                logger.debug(f"Cache hit for key: {key}")
+                return cached['data']
+            else:
+                # Remove expired item
+                del self._cache[key]
+                logger.debug(f"Cache expired for key: {key}")
+
+        logger.debug(f"Cache miss for key: {key}")
+        return None
+
+    def set(self, key: str, data: Any) -> None:
+        """Set an item in the cache."""
+        # Remove oldest item if cache is full
+        if len(self._cache) >= self.max_size:
+            # Remove oldest entry
+            oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k]['timestamp'])
+            del self._cache[oldest_key]
+
+        self._cache[key] = {
+            'data': data,
+            'timestamp': time.time()
+        }
+
+    def clear(self) -> None:
+        """Clear all cached items."""
+        self._cache.clear()
+
+# Global cache instance
+viz_cache = VisualizationCache()
 
 # UI color constants
 BG_COLOR = (0.9, 0.9, 0.9, 1)  # Light gray background
@@ -56,6 +112,29 @@ def handle_chart_error(func):
             logger.error(f"Unexpected error in {func.__name__}: {str(e)}")
             return Label(text=f"Unexpected error: {str(e)}", color=(1, 0, 0, 1))
     return wrapper
+
+
+def create_cache_key(chart_type: str, df: pd.DataFrame) -> str:
+    """Create a unique cache key for chart data based on chart type and DataFrame content."""
+    # Create a hash of the DataFrame's data that matters for the chart
+    # Use a sample of the data to keep the hash computation reasonable
+    df_hash_data = ""
+
+    if not df.empty:
+        # Include only key columns relevant to visualization
+        key_columns = [col for col in ['TRANSDATE', 'TRANSCODE', 'CATEGNAME', 'TRANSAMOUNT', 'PAYEENAME'] if col in df.columns]
+
+        if key_columns:
+            sample_df = df[key_columns].head(1000)  # Limit sample size to prevent slow hashing
+            df_hash_data = str(pd.util.hash_pandas_object(sample_df, index=True).sum())
+        else:
+            # Fallback to hash of all data if no key columns exist
+            df_sample = df.head(1000)  # Limit sample to prevent slow hashing
+            df_hash_data = str(pd.util.hash_pandas_object(df_sample, index=True).sum())
+
+    # Combine chart type and DataFrame hash
+    cache_input = f"{chart_type}:{df_hash_data}:{len(df)}:{str(df.shape)}"
+    return hashlib.md5(cache_input.encode('utf-8')).hexdigest()
 
 
 def validate_dataframe(df, required_columns=None, min_rows=1):
@@ -517,40 +596,49 @@ class VisualizationTab(BoxLayout):
 @handle_chart_error
 def create_spending_by_category_chart(transactions_df):
     """Create a pie chart showing spending by category.
-    
+
     Args:
         transactions_df: DataFrame containing transaction data
-        
+
     Returns:
         A FigureCanvasKivyAgg widget containing the chart
     """
+    # Create cache key based on the function type and input data
+    cache_key = create_cache_key("spending_by_category", transactions_df)
+
+    # Check if result is already cached
+    cached_result = viz_cache.get(cache_key)
+    if cached_result is not None:
+        logger.debug("Returning cached chart for spending by category")
+        return cached_result
+
     validate_dataframe(transactions_df, ['TRANSCODE', 'CATEGNAME', 'TRANSAMOUNT'], min_rows=1)
-    
+
     # Filter for withdrawals (expenses)
     expenses_df = transactions_df[transactions_df['TRANSCODE'] == 'Withdrawal'].copy()
-    
+
     if expenses_df.empty:
         raise DataValidationError("No expense data available for the selected period")
-    
+
     # Safely convert amounts to numeric
     expenses_df['TRANSAMOUNT'] = safe_numeric_conversion(expenses_df['TRANSAMOUNT'], 'TRANSAMOUNT')
-    
+
     # Group by category and sum amounts
     category_spending = expenses_df.groupby('CATEGNAME')['TRANSAMOUNT'].sum().reset_index()
-    
+
     if category_spending.empty:
         raise DataValidationError("No category spending data available")
-    
+
     # Sort by amount and optimize data
     category_spending = category_spending.sort_values('TRANSAMOUNT', ascending=False)
     category_spending = optimize_chart_data(category_spending, max_categories=8, max_data_points=50)
-    
+
     try:
         # Create figure with better layout
         fig = Figure(figsize=(12, 8), dpi=100)
         fig.patch.set_facecolor('white')
         ax = fig.add_subplot(111)
-        
+
         # Create pie chart with improved styling
         colors = plt.cm.Set3(range(len(category_spending)))
         wedges, texts, autotexts = ax.pie(
@@ -562,30 +650,35 @@ def create_spending_by_category_chart(transactions_df):
             startangle=90,
             explode=[0.05 if i == 0 else 0 for i in range(len(category_spending))]  # Explode largest slice
         )
-        
+
         # Equal aspect ratio ensures that pie is drawn as a circle
         ax.axis('equal')
-        
+
         # Set title with total amount
         total_amount = category_spending['TRANSAMOUNT'].sum()
         ax.set_title(f'Spending by Category\nTotal: ${total_amount:,.2f}', fontsize=14, fontweight='bold')
-        
+
         # Improve text readability
         for autotext in autotexts:
             autotext.set_color('white')
             autotext.set_fontweight('bold')
             autotext.set_fontsize(9)
-        
+
         for text in texts:
             text.set_fontsize(10)
-        
+
         # Adjust layout to prevent label cutoff
         fig.tight_layout()
-        
+
         # Create canvas
         canvas = FigureCanvasKivyAgg(fig)
+
+        # Cache the result before returning
+        viz_cache.set(cache_key, canvas)
+        logger.debug("Chart cached for spending by category")
+
         return canvas
-        
+
     except Exception as e:
         raise ChartCreationError(f"Failed to create spending by category chart: {str(e)}")
 
@@ -593,90 +686,104 @@ def create_spending_by_category_chart(transactions_df):
 @handle_chart_error
 def create_spending_over_time_chart(transactions_df):
     """Create a line chart showing spending over time.
-    
+
     Args:
         transactions_df: DataFrame containing transaction data
-        
+
     Returns:
         A FigureCanvasKivyAgg widget containing the chart
     """
+    # Create cache key based on the function type and input data
+    cache_key = create_cache_key("spending_over_time", transactions_df)
+
+    # Check if result is already cached
+    cached_result = viz_cache.get(cache_key)
+    if cached_result is not None:
+        logger.debug("Returning cached chart for spending over time")
+        return cached_result
+
     validate_dataframe(transactions_df, ['TRANSDATE', 'TRANSCODE', 'TRANSAMOUNT'], min_rows=2)
-    
+
     try:
         # Create a copy to avoid modifying original data
         df_copy = transactions_df.copy()
-        
+
         # Convert TRANSDATE to datetime with error handling
         try:
             df_copy['TRANSDATE'] = pd.to_datetime(df_copy['TRANSDATE'])
         except Exception as e:
             raise DataValidationError(f"Failed to parse transaction dates: {str(e)}")
-        
+
         # Filter for withdrawals (expenses)
         expenses_df = df_copy[df_copy['TRANSCODE'] == 'Withdrawal'].copy()
-        
+
         if expenses_df.empty:
             raise DataValidationError("No expense data available for the selected period")
-        
+
         # Safely convert amounts to numeric
         expenses_df['TRANSAMOUNT'] = safe_numeric_conversion(expenses_df['TRANSAMOUNT'], 'TRANSAMOUNT')
-        
+
         # Group by month and sum amounts
         expenses_df['Month'] = expenses_df['TRANSDATE'].dt.to_period('M')
         monthly_spending = expenses_df.groupby('Month')['TRANSAMOUNT'].sum()
-        
+
         if monthly_spending.empty:
             raise DataValidationError("No monthly spending data available")
-        
+
         # Sort by date and fill missing months if needed
         monthly_spending = monthly_spending.sort_index()
-        
+
         # If we have a large date range, consider resampling
         if len(monthly_spending) > 24:  # More than 2 years of data
             logger.info("Large dataset detected, showing last 24 months")
             monthly_spending = monthly_spending.tail(24)
-        
+
         # Create figure with better layout
         fig = Figure(figsize=(12, 6), dpi=100)
         fig.patch.set_facecolor('white')
         ax = fig.add_subplot(111)
-        
+
         # Create line chart with improved styling
         dates = [str(period) for period in monthly_spending.index]
         values = monthly_spending.values
-        
-        ax.plot(dates, values, marker='o', linestyle='-', linewidth=2.5, 
+
+        ax.plot(dates, values, marker='o', linestyle='-', linewidth=2.5,
                 markersize=6, color='#2E86AB', markerfacecolor='#A23B72')
-        
+
         # Add trend line if we have enough data points
         if len(values) >= 3:
             z = np.polyfit(range(len(values)), values, 1)
             p = np.poly1d(z)
-            ax.plot(dates, p(range(len(values))), "--", alpha=0.7, color='red', 
+            ax.plot(dates, p(range(len(values))), "--", alpha=0.7, color='red',
                    label=f'Trend: {"↗" if z[0] > 0 else "↘"}')
             ax.legend()
-        
+
         # Set labels and title
         ax.set_xlabel('Month', fontsize=12)
         ax.set_ylabel('Amount ($)', fontsize=12)
         ax.set_title('Spending Over Time', fontsize=14, fontweight='bold')
-        
+
         # Format y-axis to show currency
         ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
-        
+
         # Rotate x-axis labels for better readability
         plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
-        
+
         # Add grid for better readability
         ax.grid(True, alpha=0.3)
-        
+
         # Adjust layout
         fig.tight_layout()
-        
+
         # Create canvas
         canvas = FigureCanvasKivyAgg(fig)
+
+        # Cache the result before returning
+        viz_cache.set(cache_key, canvas)
+        logger.debug("Chart cached for spending over time")
+
         return canvas
-        
+
     except DataValidationError:
         raise
     except Exception as e:
