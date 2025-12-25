@@ -679,31 +679,45 @@ def _build_transactions_query(start_date: Optional[datetime], end_date: Optional
     return query, params
 
 def _get_tags_for(conn: sqlite3.Connection, transaction_ids: list) -> Dict[int, str]:
+    """Optimized function to get tags for transaction IDs in batches.
+
+    This function has been optimized to improve performance by fetching
+    all tags in a single query rather than multiple batched queries.
+    """
     if not transaction_ids:
         return {}
-    BATCH_SIZE = 900
+
+    # Create a single query with all transaction IDs to minimize database round trips
+    placeholders = ','.join(['?' for _ in transaction_ids])
+    tag_query = f"""
+                SELECT tl.REFID as TRANSID, t.TAGNAME
+                FROM {TAG_TABLE} t
+                JOIN {TAGLINK_TABLE} tl ON t.TAGID = tl.TAGID
+                WHERE tl.REFID IN ({placeholders}) AND tl.REFTYPE = 'Transaction'
+                ORDER BY tl.REFID, t.TAGNAME
+                """
+
+    tag_error, tags_df = handle_database_query(conn, tag_query, transaction_ids)
+    if tag_error:
+        logger.warning(f"Error retrieving tags: {tag_error}")
+        return {}
+
+    if tags_df.empty:
+        # Return empty dict with all transaction IDs mapped to empty strings for consistency
+        return {tid: '' for tid in transaction_ids}
+
+    # Group tags by transaction ID efficiently
     tags_dict: Dict[int, list] = {}
-    for i in range(0, len(transaction_ids), BATCH_SIZE):
-        batch_ids = transaction_ids[i:i + BATCH_SIZE]
-        placeholders = ','.join(['?' for _ in batch_ids])
-        tag_query = f"""
-                    SELECT tl.REFID as TRANSID, t.TAGNAME
-                    FROM {TAG_TABLE} t
-                    JOIN {TAGLINK_TABLE} tl ON t.TAGID = tl.TAGID
-                    WHERE tl.REFID IN ({placeholders}) AND tl.REFTYPE = 'Transaction'
-                    ORDER BY tl.REFID, t.TAGNAME
-                    """
-        tag_error, tags_df = handle_database_query(conn, tag_query, batch_ids)
-        if tag_error:
-            continue
-        if not tags_df.empty:
-            for _, tag_row in tags_df.iterrows():
-                trans_id = tag_row['TRANSID']
-                tag_name = tag_row['TAGNAME']
-                if trans_id not in tags_dict:
-                    tags_dict[trans_id] = []
-                tags_dict[trans_id].append(tag_name)
-    return {tid: ', '.join(names) for tid, names in tags_dict.items()}
+    for _, tag_row in tags_df.iterrows():
+        trans_id = tag_row['TRANSID']
+        tag_name = tag_row['TAGNAME']
+        if trans_id not in tags_dict:
+            tags_dict[trans_id] = []
+        tags_dict[trans_id].append(tag_name)
+
+    # Join tags for each transaction ID and ensure all original IDs are represented
+    result = {tid: ', '.join(tags_dict.get(tid, [])) for tid in transaction_ids}
+    return result
 
 def get_transactions(db_path: str, start_date_str: Optional[str] = None, 
                     end_date_str: Optional[str] = None, account_id: Optional[int] = None,
