@@ -6,6 +6,7 @@ asynchronously to prevent UI freezing during long-running queries.
 
 import threading
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Any, Optional
 from functools import wraps
 try:
@@ -21,6 +22,43 @@ except Exception:
     Clock = _FallbackClock()
 
 logger = logging.getLogger(__name__)
+
+# Global thread pool for managing async operations efficiently
+class GlobalAsyncPool:
+    """Global thread pool to manage async operations efficiently."""
+
+    def __init__(self, max_workers: int = 4):
+        """Initialize the global thread pool.
+
+        Args:
+            max_workers: Maximum number of worker threads in the pool
+        """
+        self.max_workers = max_workers
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+
+    def submit(self, fn, *args, **kwargs):
+        """Submit a function to the thread pool."""
+        return self.executor.submit(fn, *args, **kwargs)
+
+    def shutdown(self, wait=True):
+        """Shutdown the thread pool."""
+        self.executor.shutdown(wait=wait)
+
+# Global instance of the async pool
+async_pool = GlobalAsyncPool()
+
+
+# Function to shutdown the async pool when application exits
+def shutdown_async_pool():
+    """Shutdown the global async pool when the application exits."""
+    logger.info("Shutting down async pool...")
+    async_pool.shutdown(wait=True)
+    logger.info("Async pool shutdown complete.")
+
+
+# Register shutdown function to be called when module is unloaded
+import atexit
+atexit.register(shutdown_async_pool)
 
 
 class AsyncDatabaseOperation:
@@ -50,10 +88,11 @@ class AsyncDatabaseOperation:
         timeout: Optional[float] = None,
     ) -> None:
         self.is_running = False
-        self.current_thread = None
+        self.current_thread = None  # Kept for backward compatibility
         self._completed = False
         self._timeout = timeout
         self._timeout_timer = None
+        self._future = None  # Store the future for thread pool operations
         # Stored configuration for builder-style usage
         self._target_func = target_func
         self._args = args or ()
@@ -160,10 +199,11 @@ class AsyncDatabaseOperation:
                 # Schedule complete callback on main thread
                 self._schedule_cb(on_complete)
 
-        # Start the worker thread
+        # Submit the worker to the global thread pool instead of creating a new thread
         op_name_for_thread = getattr(operation, "__name__", "AsyncOperation")
-        self.current_thread = threading.Thread(target=worker, daemon=True, name=op_name_for_thread)
-        self.current_thread.start()
+        future = async_pool.submit(worker)
+        # Store the future in case we need it for cancellation
+        self._future = future
         return self
 
     def start(self) -> Optional["AsyncDatabaseOperation"]:
@@ -184,10 +224,14 @@ class AsyncDatabaseOperation:
 
     def cancel(self) -> None:
         """Cancel the current operation if possible."""
-        if self.is_running and self.current_thread:
-            logger.info("Attempting to cancel async operation")
-            # Note: Python threads cannot be forcefully cancelled
-            # This just marks the operation as not running
+        cancelled = False
+        if self._future:
+            # Attempt to cancel the future if possible
+            cancelled = self._future.cancel()
+
+        if self.is_running:
+            logger.info(f"Attempting to cancel async operation (cancelled: {cancelled})")
+            # Mark the operation as not running
             self.is_running = False
             try:
                 if self._timeout_timer:
