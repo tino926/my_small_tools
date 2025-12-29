@@ -143,31 +143,31 @@ def handle_database_operation(operation_func: Callable[..., Any], *args: Any, **
         return error_msg, None
 
 
-def handle_database_query(conn: sqlite3.Connection, query: str, params: Optional[List[Any]] = None, 
+def handle_database_query(conn: sqlite3.Connection, query: str, params: Optional[List[Any]] = None,
                          return_dataframe: bool = True) -> Tuple[Optional[str], Union[pd.DataFrame, List[Any]]]:
     """Execute a database query with consistent error handling and result formatting.
-    
+
     This function provides a standardized way to execute SQL queries with proper
     error handling, parameter binding, and result formatting. It supports both
     DataFrame and raw result returns.
-    
+
     Args:
         conn (sqlite3.Connection): Database connection object.
         query (str): SQL query string to execute.
         params (Optional[List[Any]]): List of query parameters for parameter binding.
         return_dataframe (bool): Whether to return a pandas DataFrame (True) or raw result (False).
-        
+
     Returns:
         Tuple containing:
             - error_message (str or None): Error message if any, None if successful
             - result (DataFrame or List): Query result as DataFrame or list based on return_dataframe
-            
+
     Raises:
         None: All exceptions are caught and returned as error messages.
-        
+
     Example:
         >>> error, df = handle_database_query(conn, "SELECT * FROM accounts WHERE id = ?", [1])
-        >>> error, rows = handle_database_query(conn, "SELECT COUNT(*) FROM accounts", 
+        >>> error, rows = handle_database_query(conn, "SELECT COUNT(*) FROM accounts",
         ...                                    return_dataframe=False)
     """
     # Input validation
@@ -175,21 +175,28 @@ def handle_database_query(conn: sqlite3.Connection, query: str, params: Optional
         error_msg = DEFAULT_ERROR_MESSAGES['invalid_connection']
         logger.error(error_msg)
         return error_msg, pd.DataFrame() if return_dataframe else []
-        
+
     if not query or not isinstance(query, str):
         error_msg = DEFAULT_ERROR_MESSAGES['invalid_query'].format(query=query)
         logger.error(error_msg)
         return error_msg, pd.DataFrame() if return_dataframe else []
-        
+
     if params is not None and not isinstance(params, (list, tuple)):
         error_msg = DEFAULT_ERROR_MESSAGES['invalid_parameters'].format(params=type(params).__name__)
         logger.error(error_msg)
         return error_msg, pd.DataFrame() if return_dataframe else []
-        
+
+    # Track query execution time for performance monitoring
+    import time
+    start_time = time.time()
+
     try:
         if return_dataframe:
             result = pd.read_sql_query(query, conn, params=params or [])
+            execution_time = time.time() - start_time
             logger.debug(DEBUG_MSG_QUERY_SUCCESS_DF.format(count=len(result)))
+            if execution_time > 1.0:  # Log slow queries (taking more than 1 second)
+                logger.warning(f"Slow query detected (execution time: {execution_time:.2f}s): {query[:100]}...")
             return None, result
         else:
             cursor = None
@@ -197,7 +204,10 @@ def handle_database_query(conn: sqlite3.Connection, query: str, params: Optional
                 cursor = conn.cursor()
                 cursor.execute(query, params or [])
                 result = cursor.fetchall()
+                execution_time = time.time() - start_time
                 logger.debug(DEBUG_MSG_QUERY_SUCCESS_LIST.format(count=len(result)))
+                if execution_time > 1.0:  # Log slow queries (taking more than 1 second)
+                    logger.warning(f"Slow query detected (execution time: {execution_time:.2f}s): {query[:100]}...")
                 return None, result
             finally:
                 # Ensure cursor is closed to avoid resource leaks
@@ -208,16 +218,19 @@ def handle_database_query(conn: sqlite3.Connection, query: str, params: Optional
                     # Non-critical: log at debug level and continue
                     logger.debug(f"Non-critical error closing cursor: {close_err}")
     except sqlite3.Error as e:
+        execution_time = time.time() - start_time
         error_msg = DEFAULT_ERROR_MESSAGES['database_error'].format(error=e)
-        logger.error(f"SQLite error executing query: {e}")
+        logger.error(f"SQLite error executing query (execution time: {execution_time:.2f}s): {e}")
         return error_msg, pd.DataFrame() if return_dataframe else []
     except pd.io.sql.DatabaseError as e:
+        execution_time = time.time() - start_time
         error_msg = DEFAULT_ERROR_MESSAGES['database_error'].format(error=e)
-        logger.error(f"Pandas database error executing query: {e}")
+        logger.error(f"Pandas database error executing query (execution time: {execution_time:.2f}s): {e}")
         return error_msg, pd.DataFrame() if return_dataframe else []
     except Exception as e:
+        execution_time = time.time() - start_time
         error_msg = DEFAULT_ERROR_MESSAGES['unexpected_error'].format(error=e)
-        logger.error(f"Unexpected error executing query: {e}")
+        logger.error(f"Unexpected error executing query (execution_time: {execution_time:.2f}s): {e}")
         return error_msg, pd.DataFrame() if return_dataframe else []
 
 
