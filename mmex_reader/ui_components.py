@@ -1116,7 +1116,6 @@ def create_header_label(text):
 def _create_data_label(text, num_columns):
     """Create a data label (deprecated - use create_styled_label)."""
     return create_styled_label(text, 'data', num_columns)
-    return label
 
 def populate_grid_with_dataframe(grid, df, headers=None, sort_callback=None, row_click_callback=None):
     """Populate a grid layout with data from a DataFrame with responsive design.
@@ -1223,29 +1222,31 @@ def _add_grid_data_rows(grid, df, display_headers, row_click_callback, ui_config
         # Map display headers to DataFrame columns
         header_to_column = {
             "Date": "TRANSDATE",
-            "Account": "ACCOUNTNAME", 
+            "Account": "ACCOUNTNAME",
             "Payee": "PAYEENAME",
             "Category": "CATEGNAME",
             "Tags": "TAGNAMES",
             "Notes": "NOTES",
             "Amount": "TRANSAMOUNT"
         }
-        
+
         if display_headers:
             display_columns = [
-                header_to_column.get(h, h) 
-                for h in display_headers 
+                header_to_column.get(h, h)
+                for h in display_headers
                 if header_to_column.get(h, h) in df.columns
             ]
         else:
             display_columns = df.columns
-        
+
+        # Process all rows but add widgets individually (since Kivy doesn't have a batch method)
+        # We can optimize by preparing data first to reduce repeated operations in the loop
         for row_index, row in df.iterrows():
             for col in display_columns:
                 value = row[col]
                 # Format value based on column type
                 text = _format_cell_value(col, value)
-                
+
                 if row_click_callback:
                     # Create clickable button for better touch handling
                     cell_widget = Button(
@@ -1260,18 +1261,20 @@ def _add_grid_data_rows(grid, df, display_headers, row_click_callback, ui_config
                     )
                     cell_widget.text_size = (None, None)
                     cell_widget.bind(size=cell_widget.setter('text_size'))
-                    
-                    # Bind click event with row data
-                    def on_row_click(instance, row_data=row.to_dict()):
-                        row_click_callback(row_data)
-                    
-                    cell_widget.bind(on_press=on_row_click)
+
+                    # Bind click event with row data using a factory function to avoid closure issues
+                    def make_on_row_click(row_data):
+                        def on_row_click(instance):
+                            row_click_callback(row_data)
+                        return on_row_click
+
+                    cell_widget.bind(on_press=make_on_row_click(row.to_dict()))
                 else:
                     # Create regular label
                     cell_widget = _create_data_label(text, len(display_columns))
-                
+
                 grid.add_widget(cell_widget)
-                
+
     except Exception as e:
         logger.error(f"Error adding grid data rows: {e}")
 
