@@ -63,9 +63,11 @@ class AppConfig:
         return cls(**data)
 
 
+import hashlib
+
 class ConfigManager:
     """Manages application configuration with file persistence."""
-    
+
     def __init__(self, config_file: str = "mmex_config.json"):
         # Use user's home directory for configuration
         home_dir = Path.home() / ".mmex_reader"
@@ -73,7 +75,17 @@ class ConfigManager:
         home_dir.mkdir(exist_ok=True, parents=True)
         self.config_file = home_dir / config_file
         self.config = AppConfig()
+        # Add a config hash to track changes and prevent unnecessary writes
+        self._config_hash = self._calculate_config_hash()
         self.load_config()
+
+    def _calculate_config_hash(self) -> str:
+        """Calculate a hash of the current configuration to detect changes."""
+        config_dict = self.config.to_dict()
+        # Convert config to a consistent JSON string for hashing
+        config_str = json.dumps(config_dict, sort_keys=True, default=str)
+        # Create hash of the configuration string
+        return hashlib.md5(config_str.encode('utf-8')).hexdigest()
     
     def load_config(self) -> None:
         """Load configuration from file."""
@@ -82,6 +94,8 @@ class ConfigManager:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     self.config = AppConfig.from_dict(data)
+                    # Update the hash after loading
+                    self._config_hash = self._calculate_config_hash()
             except (json.JSONDecodeError, TypeError, ValueError) as e:
                 # Backup the corrupt/invalid config to preserve user data, then reset to defaults
                 print(f"Error loading config: {e}. Using defaults.")
@@ -94,23 +108,39 @@ class ConfigManager:
                 except Exception as backup_err:
                     print(f"Failed to backup invalid config: {backup_err}")
                 self.config = AppConfig()
-        
+                # Update the hash after resetting to defaults
+                self._config_hash = self._calculate_config_hash()
+
         # Load database path from .env if not set in config
         if not self.config.db_file_path:
-            from db_utils import load_db_path
-            # Avoid initializing connection pool during config loading to prevent side effects
-            env_db_path = load_db_path(initialize_pool=False)
-            if env_db_path:
-                self.config.db_file_path = env_db_path
+            try:
+                from db_utils import load_db_path
+                # Avoid initializing connection pool during config loading to prevent side effects
+                env_db_path = load_db_path(initialize_pool=False)
+                if env_db_path:
+                    self.config.db_file_path = env_db_path
+                    # Update the hash after setting db path from env
+                    self._config_hash = self._calculate_config_hash()
+            except ImportError:
+                # Fallback in case db_utils is not available
+                pass
     
     def save_config(self) -> None:
-        """Save configuration to file."""
+        """Save configuration to file, only if changes have occurred."""
+        # Check if config has actually changed before saving
+        current_hash = self._calculate_config_hash()
+        if current_hash == self._config_hash:
+            # No changes, skip saving
+            return
+
         try:
             # Write atomically: write to temp file then replace
             tmp_path = self.config_file.with_suffix(self.config_file.suffix + ".tmp")
             with open(tmp_path, 'w', encoding='utf-8') as f:
                 json.dump(self.config.to_dict(), f, indent=2)
             os.replace(tmp_path, self.config_file)
+            # Update the hash after successful save
+            self._config_hash = current_hash
         except Exception as e:
             # Attempt cleanup of temp file on failure
             try:
@@ -127,10 +157,38 @@ class ConfigManager:
     def update_config(self, **kwargs) -> None:
         """Update configuration with new values, with validation."""
         self._validate_updates(kwargs)
+        config_changed = False
         for key, value in kwargs.items():
             if hasattr(self.config, key):
+                old_value = getattr(self.config, key)
                 setattr(self.config, key, value)
-        self.save_config()
+                # Check if the value actually changed
+                if old_value != value:
+                    config_changed = True
+
+        # Only save if there were actual changes
+        if config_changed:
+            self.save_config()
+
+    def force_save_config(self) -> None:
+        """Force save the configuration even if no changes are detected."""
+        current_hash = self._calculate_config_hash()
+        try:
+            # Write atomically: write to temp file then replace
+            tmp_path = self.config_file.with_suffix(self.config_file.suffix + ".tmp")
+            with open(tmp_path, 'w', encoding='utf-8') as f:
+                json.dump(self.config.to_dict(), f, indent=2)
+            os.replace(tmp_path, self.config_file)
+            # Update the hash after successful save
+            self._config_hash = current_hash
+        except Exception as e:
+            # Attempt cleanup of temp file on failure
+            try:
+                if 'tmp_path' in locals() and os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+            print(f"Error saving config: {e}")
 
     def _validate_updates(self, updates: Dict[str, Any]) -> None:
         """Validate incoming configuration updates and raise on invalid values."""
