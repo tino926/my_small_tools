@@ -806,7 +806,9 @@ def get_transactions(db_path: str, start_date_str: Optional[str] = None,
         if not transactions_df.empty:
             ids = transactions_df['TRANSID'].tolist()
             tags_map = _get_tags_for(conn, ids)
-            transactions_df['TAGS'] = transactions_df['TRANSID'].apply(lambda tid: tags_map.get(tid, ''))
+            # Use pandas map function instead of apply for better performance
+            # Create a Series from the transaction IDs and map tag values
+            transactions_df['TAGS'] = transactions_df['TRANSID'].map(tags_map).fillna('')
         else:
             transactions_df['TAGS'] = ''
 
