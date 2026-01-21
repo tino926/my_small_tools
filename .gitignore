@@ -40,4 +40,5 @@ mmex_reader/fonts/
 *.swp
 *~
 
+z_local_cmd/
 prompt.md
