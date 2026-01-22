@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any
 from pathlib import Path
 
 try:
-    from ui_components import show_popup
+    from ui_config_new import show_popup
 except Exception:
     def show_popup(title, text, popup_type='info'):
         print(f"{title}: {text}")
@@ -76,16 +76,24 @@ class ConfigManager:
         self.config_file = home_dir / config_file
         self.config = AppConfig()
         # Add a config hash to track changes and prevent unnecessary writes
-        self._config_hash = self._calculate_config_hash()
+        self._config_hash = None  # Initialize as None to force a load on first access
         self.load_config()
 
     def _calculate_config_hash(self) -> str:
         """Calculate a hash of the current configuration to detect changes."""
-        config_dict = self.config.to_dict()
-        # Convert config to a consistent JSON string for hashing
-        config_str = json.dumps(config_dict, sort_keys=True, default=str)
-        # Create hash of the configuration string
-        return hashlib.md5(config_str.encode('utf-8')).hexdigest()
+        # Use pickle for faster serialization than JSON if available, otherwise fallback to JSON
+        try:
+            import pickle
+            # Use pickle for faster serialization, then hash the bytes
+            serialized = pickle.dumps(self.config.to_dict(), protocol=pickle.HIGHEST_PROTOCOL)
+            return hashlib.md5(serialized).hexdigest()
+        except Exception:
+            # Fallback to JSON if pickle fails
+            config_dict = self.config.to_dict()
+            # Convert config to a consistent JSON string for hashing
+            config_str = json.dumps(config_dict, sort_keys=True, default=str)
+            # Create hash of the configuration string
+            return hashlib.md5(config_str.encode('utf-8')).hexdigest()
     
     def load_config(self) -> None:
         """Load configuration from file."""
@@ -118,9 +126,11 @@ class ConfigManager:
                 # Avoid initializing connection pool during config loading to prevent side effects
                 env_db_path = load_db_path(initialize_pool=False)
                 if env_db_path:
+                    old_db_path = self.config.db_file_path
                     self.config.db_file_path = env_db_path
-                    # Update the hash after setting db path from env
-                    self._config_hash = self._calculate_config_hash()
+                    # Only update the hash if the DB path actually changed
+                    if old_db_path != env_db_path:
+                        self._config_hash = self._calculate_config_hash()
             except ImportError:
                 # Fallback in case db_utils is not available
                 pass
@@ -135,17 +145,19 @@ class ConfigManager:
 
         try:
             # Write atomically: write to temp file then replace
-            tmp_path = self.config_file.with_suffix(self.config_file.suffix + ".tmp")
+            # Use a more unique temp file name to prevent conflicts
+            tmp_path = self.config_file.with_name(f"{self.config_file.stem}.tmp.{os.getpid()}")
             with open(tmp_path, 'w', encoding='utf-8') as f:
-                json.dump(self.config.to_dict(), f, indent=2)
+                # Use more efficient JSON writing with sorted keys for consistent hashing
+                json.dump(self.config.to_dict(), f, indent=2, sort_keys=True)
             os.replace(tmp_path, self.config_file)
             # Update the hash after successful save
             self._config_hash = current_hash
         except Exception as e:
             # Attempt cleanup of temp file on failure
             try:
-                if 'tmp_path' in locals() and os.path.exists(tmp_path):
-                    os.remove(tmp_path)
+                if 'tmp_path' in locals() and tmp_path.exists():
+                    tmp_path.unlink(missing_ok=True)
             except Exception:
                 pass
             print(f"Error saving config: {e}")
@@ -157,17 +169,22 @@ class ConfigManager:
     def update_config(self, **kwargs) -> None:
         """Update configuration with new values, with validation."""
         self._validate_updates(kwargs)
-        config_changed = False
+
+        # Track which values actually changed to avoid redundant saves
+        changes_made = False
+        old_values = {}  # Store old values for potential rollback if needed
+
         for key, value in kwargs.items():
             if hasattr(self.config, key):
                 old_value = getattr(self.config, key)
-                setattr(self.config, key, value)
-                # Check if the value actually changed
+                # Only update if value is different to avoid unnecessary operations
                 if old_value != value:
-                    config_changed = True
+                    old_values[key] = old_value
+                    setattr(self.config, key, value)
+                    changes_made = True
 
         # Only save if there were actual changes
-        if config_changed:
+        if changes_made:
             self.save_config()
 
     def force_save_config(self) -> None:
@@ -175,17 +192,19 @@ class ConfigManager:
         current_hash = self._calculate_config_hash()
         try:
             # Write atomically: write to temp file then replace
-            tmp_path = self.config_file.with_suffix(self.config_file.suffix + ".tmp")
+            # Use a more unique temp file name to prevent conflicts
+            tmp_path = self.config_file.with_name(f"{self.config_file.stem}.tmp.{os.getpid()}")
             with open(tmp_path, 'w', encoding='utf-8') as f:
-                json.dump(self.config.to_dict(), f, indent=2)
+                # Use more efficient JSON writing with sorted keys for consistent hashing
+                json.dump(self.config.to_dict(), f, indent=2, sort_keys=True)
             os.replace(tmp_path, self.config_file)
             # Update the hash after successful save
             self._config_hash = current_hash
         except Exception as e:
             # Attempt cleanup of temp file on failure
             try:
-                if 'tmp_path' in locals() and os.path.exists(tmp_path):
-                    os.remove(tmp_path)
+                if 'tmp_path' in locals() and tmp_path.exists():
+                    tmp_path.unlink(missing_ok=True)
             except Exception:
                 pass
             print(f"Error saving config: {e}")
