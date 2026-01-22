@@ -42,16 +42,11 @@ from db_utils import (
     get_transactions,
     calculate_balance_for_account,
 )
-from ui_components import (
-    AccountTabContent,
-    show_popup,
-    populate_grid_with_dataframe,
-    DatePickerButton,
-    TransactionDetailsPopup,
-    BG_COLOR,
-    BUTTON_COLOR,
-)
-from visualization import VisualizationTab
+from account_components_new import AccountTabContent
+from ui_config_new import show_popup, BG_COLOR, BUTTON_COLOR
+from transaction_components_new import populate_grid_with_dataframe, TransactionDetailsPopup
+from date_components_new import DatePickerButton
+from visualization_refactored import VisualizationTab
 from pagination_utils import get_transaction_count, PaginationInfo
 from async_utils import AsyncDatabaseOperation, LoadingIndicator
 from kv_components import (
