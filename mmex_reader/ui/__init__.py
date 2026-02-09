@@ -18,7 +18,9 @@ from ui.base import BaseUIComponent
 # Widgets
 from ui.widgets import (
     DatePickerWidget,
-    DatePickerButton
+    DatePickerButton,
+    show_popup,
+    create_popup
 )
 
 # Account components
@@ -36,9 +38,7 @@ from ui.config import (
     BG_COLOR,
     HEADER_COLOR,
     BUTTON_COLOR,
-    HIGHLIGHT_COLOR,
-    show_popup,
-    create_popup
+    HIGHLIGHT_COLOR
 )
 
 __all__ = [
