@@ -1,27 +1,12 @@
-"""UI Configuration components for the MMEX Kivy application.
+"""UI configuration and constants for the MMEX Kivy application."""
 
-This module provides configuration classes for UI components,
-including colors, responsive design settings, and UI constants.
-"""
-
-# Standard library imports
 import logging
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass
 from enum import Enum
-
-# Third-party imports
+from typing import Tuple, List, Optional, Callable
 from kivy.core.window import Window
 
-# =============================================================================
-# LOGGING CONFIGURATION
-# =============================================================================
-
 logger = logging.getLogger(__name__)
-
-# =============================================================================
-# CONFIGURATION CLASSES
-# =============================================================================
 
 class ScreenSize(Enum):
     """Screen size categories for responsive design."""
@@ -49,17 +34,22 @@ class ResponsiveConfig:
     font_size: int
     button_height: int
     input_height: int
-
+    
+    # Header heights
+    header_height: int = 50
+    header_height_mobile: int = 80
+    
+    # Specific padding/spacing for different sizes
+    padding_mobile: int = 5
+    spacing_mobile: int = 3
+    padding_tablet: int = 8
+    spacing_tablet: int = 5
+    padding_desktop: int = 10
+    spacing_desktop: int = 10
+    
     @classmethod
     def get_config(cls, screen_width: float) -> 'ResponsiveConfig':
-        """Get responsive configuration based on screen width.
-
-        Args:
-            screen_width: Current screen width in pixels
-
-        Returns:
-            ResponsiveConfig: Configuration for the current screen size
-        """
+        """Get responsive configuration based on screen width."""
         if screen_width <= 600:  # Mobile
             return cls(
                 screen_size=ScreenSize.MOBILE,
@@ -87,120 +77,60 @@ class ResponsiveConfig:
                 button_height=45,
                 input_height=45
             )
+            
+    def get_screen_size(self) -> ScreenSize:
+        return self.screen_size
 
 class UIConfig:
     """Central configuration class for UI components."""
-
+    
     def __init__(self):
         self.colors = UIColors()
         self.responsive = ResponsiveConfig.get_config(Window.width)
         self._resize_callbacks = []
-
+        
         # Update responsive config when window size changes
         Window.bind(on_resize=self._on_window_resize)
-
+    
     def _on_window_resize(self, instance, width, height):
         """Update responsive configuration when window is resized."""
         old_size = self.responsive.screen_size
         self.responsive = ResponsiveConfig.get_config(width)
         new_size = self.responsive.screen_size
         logger.debug(f"Window resized to {width}x{height}, updated to {new_size.value}")
-
+        
         # Notify registered callbacks if screen size category changed
         if old_size != new_size:
             for callback in self._resize_callbacks:
                 callback(self.responsive)
-
+    
     def register_resize_callback(self, callback):
-        """Register a callback to be notified when responsive config changes.
-
-        Args:
-            callback: Function to call with the new responsive config
-        """
+        """Register a callback to be notified when responsive config changes."""
         if callback not in self._resize_callbacks:
             self._resize_callbacks.append(callback)
-            logger.debug(f"Registered resize callback: {callback.__qualname__ if hasattr(callback, '__qualname__') else callback}")
-
+    
     def unregister_resize_callback(self, callback):
-        """Unregister a previously registered callback.
-
-        Args:
-            callback: Previously registered callback function
-        """
+        """Unregister a previously registered callback."""
         if callback in self._resize_callbacks:
             self._resize_callbacks.remove(callback)
-            logger.debug(f"Unregistered resize callback: {callback.__qualname__ if hasattr(callback, '__qualname__') else callback}")
-
+    
     @property
     def is_mobile(self) -> bool:
-        """Check if current screen size is mobile."""
         return self.responsive.screen_size == ScreenSize.MOBILE
-
+    
     @property
     def is_tablet(self) -> bool:
-        """Check if current screen size is tablet."""
         return self.responsive.screen_size == ScreenSize.TABLET
-
+    
     @property
     def is_desktop(self) -> bool:
-        """Check if current screen size is desktop."""
         return self.responsive.screen_size == ScreenSize.DESKTOP
 
 # Global UI configuration instance
 ui_config = UIConfig()
 
-# Legacy color constants for backward compatibility
+# Legacy constants
 BG_COLOR = ui_config.colors.background
 HEADER_COLOR = ui_config.colors.header
 BUTTON_COLOR = ui_config.colors.button
 HIGHLIGHT_COLOR = ui_config.colors.highlight
-
-# Utility functions
-def create_popup(title: str, content, size_hint=(0.8, 0.8), auto_dismiss=True):
-    """Create a standardized popup with consistent styling.
-    
-    Args:
-        title: Popup title
-        content: Content widget for the popup
-        size_hint: Size hint tuple (width, height)
-        auto_dismiss: Whether popup auto-dismisses on outside click
-        
-    Returns:
-        Popup: Configured popup instance
-    """
-    popup = Popup(
-        title=title,
-        content=content,
-        size_hint=size_hint,
-        auto_dismiss=auto_dismiss,
-        title_color=ui_config.colors.header,
-        title_size='18sp',
-        separator_color=ui_config.colors.header
-    )
-    return popup
-
-def show_popup(title: str, message: str, size_hint=(0.6, 0.4)):
-    """Show a simple message popup with consistent styling.
-    
-    Args:
-        title: Popup title
-        message: Message to display
-        size_hint: Size hint tuple (width, height)
-    """
-    from kivy.uix.label import Label
-    from kivy.uix.boxlayout import BoxLayout
-    
-    content = BoxLayout(orientation='vertical', padding=20, spacing=10)
-    message_label = Label(
-        text=message,
-        text_size=(None, None),
-        halign='center',
-        valign='middle',
-        color=(0.2, 0.2, 0.2, 1),
-        font_size='16sp'
-    )
-    message_label.bind(size=message_label.setter('text_size'))
-    content.add_widget(message_label)
-    
-    popup = create_popup(title, content, size_hint=size_hint)
-    popup.open()
