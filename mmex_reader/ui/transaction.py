@@ -108,21 +108,47 @@ def populate_grid_with_dataframe(
         # Clear existing widgets
         grid.clear_widgets()
 
+        # Determine if we're on mobile based on screen width
+        # Default to desktop if Window is not available or logic fails
+        try:
+            from kivy.core.window import Window
+            screen_width = Window.width
+            # Use a default breakpoint if not defined in config
+            mobile_breakpoint = getattr(ui_config.responsive, 'mobile_breakpoint', 600)
+            is_mobile = screen_width < mobile_breakpoint
+        except Exception:
+            is_mobile = False
+
+        # Define mobile-friendly column subsets
+        if is_mobile and headers:
+            # Show only essential columns on mobile
+            mobile_headers = ["Date", "Payee", "Amount", "Category"]
+            # Filter headers to keep only those present in the input headers
+            display_headers = [h for h in mobile_headers if h in headers]
+            # If no mobile headers match, fall back to showing first 3 headers
+            if not display_headers and headers:
+                display_headers = headers[:3]
+        else:
+            display_headers = headers
+
         # Set number of columns
-        grid.cols = len(headers)
+        grid.cols = len(display_headers)
 
         # Create header row with sortable buttons
-        for i, header in enumerate(headers):
+        for i, header in enumerate(display_headers):
+            # Find original index for sorting callback
+            original_index = headers.index(header) if header in headers else i
+            
             header_btn = SortableHeaderButton(
                 header_text=header,
-                column_index=i,
+                column_index=original_index,
                 sort_callback=sort_callback
             )
             grid.add_widget(header_btn)
 
         # Add data rows
         for idx, row in df.iterrows():
-            for col_idx, header in enumerate(headers):
+            for header in display_headers:
                 # Get cell value
                 if header in row:
                     cell_value = str(row[header]) if pd.notna(row[header]) else ""

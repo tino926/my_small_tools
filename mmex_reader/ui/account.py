@@ -1,206 +1,167 @@
-"""Account Components for the MMEX Kivy application.
-
-This module provides UI components for account-related functionality.
-"""
-
-# Standard library imports
-import logging
-from typing import Any, Callable, Dict, Optional
-
-# Third-party imports
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.label import Label
 from kivy.uix.gridlayout import GridLayout
+from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
+from kivy.uix.button import Button
+import logging
 
-# Local imports
-try:
-    from error_handling import handle_database_operation, is_valid_date_format
-except ImportError:
-    # Fallback if error_handling module is not available
-    def handle_database_operation(func, *args, **kwargs):
-        return None, func(*args, **kwargs)
-
-from ui.base import BaseUIComponent
-from ui.config import ui_config, show_popup
-from ui.transaction import populate_grid_with_dataframe, SortableHeaderButton
-
-# =============================================================================
-# LOGGING CONFIGURATION
-# =============================================================================
+from .config import ui_config, ScreenSize
+from .base import BaseUIComponent
 
 logger = logging.getLogger(__name__)
 
-# =============================================================================
-# ACCOUNT COMPONENTS
-# =============================================================================
-
-
 class AccountTabContent(BaseUIComponent):
-    """Content for account-specific tabs with responsive design."""
-
-    def __init__(self, account_id: int, account_name: str, initial_balance: float = 0.0, **kwargs):
+    """Content for an account-specific tab with responsive design."""
+    
+    def __init__(self, account_id, account_name, **kwargs):
         """
         Initialize AccountTabContent.
-
+        
         Args:
-            account_id: Unique identifier for the account
-            account_name: Display name for the account
-            initial_balance: Starting balance for the account
+            account_id: ID of the account
+            account_name: Name of the account
             **kwargs: Additional keyword arguments
         """
-        super(AccountTabContent, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.orientation = 'vertical'
         self.account_id = account_id
         self.account_name = account_name
-        self.initial_balance = initial_balance
-
-        # Create account-specific UI components
-        self._create_account_header()
-        self._create_results_area()
-        self._create_balance_display()
-
-    def _create_account_header(self):
-        """Create the account header with account information."""
-        header_layout = self._create_responsive_layout(
-            orientation='horizontal',
-            size_hint_y=None,
-            height=self.ui_config.responsive.button_height * 2
-        )
-
-        # Account name label
-        account_label = self.create_label(
-            f"Account: {self.account_name}",
-            size_hint_x=0.7,
-            bold=True
-        )
-        header_layout.add_widget(account_label)
-
-        # Account ID label
-        id_label = self.create_label(
-            f"ID: {self.account_id}",
-            size_hint_x=0.3,
-            halign='right'
-        )
-        header_layout.add_widget(id_label)
-
-        self.add_widget(header_layout)
-
-    def _create_results_area(self):
-        """Create the area for displaying account transaction results."""
+        
+        try:
+            # Set responsive properties based on screen size
+            screen_size = self.ui_config.responsive.get_screen_size()
+            
+            if screen_size == ScreenSize.MOBILE:
+                self.padding = self.ui_config.responsive.padding_mobile
+                self.spacing = self.ui_config.responsive.spacing_mobile
+                self.is_mobile = True
+            elif screen_size == ScreenSize.TABLET:
+                self.padding = self.ui_config.responsive.padding_tablet
+                self.spacing = self.ui_config.responsive.spacing_tablet
+                self.is_mobile = False
+            else:  # Desktop
+                self.padding = self.ui_config.responsive.padding_desktop
+                self.spacing = self.ui_config.responsive.spacing_desktop
+                self.is_mobile = False
+            
+            self._create_header()
+            
+        except Exception as e:
+            logger.error(f"Error initializing AccountTabContent: {e}")
+            self.show_error("Error initializing account tab")
+    
+    def _create_header(self):
+        """Create the account header with responsive layout."""
+        try:
+            # Account info header with responsive layout
+            if self.is_mobile:
+                # Stack account info vertically on mobile
+                self.header = BoxLayout(
+                    orientation='vertical', 
+                    size_hint=(1, None), 
+                    height=self.ui_config.responsive.header_height_mobile,
+                    spacing=self.spacing
+                )
+                
+                # Account name label
+                self.account_label = self.create_label(
+                    text=f"Account: {self.account_name}",
+                    size_hint=(1, 0.5),
+                    halign='center'
+                )
+                self.header.add_widget(self.account_label)
+                
+                # Balance label
+                self.balance_label = self.create_label(
+                    text="Balance: Loading...",
+                    size_hint=(1, 0.5),
+                    halign='center'
+                )
+                self.header.add_widget(self.balance_label)
+            else:
+                # Horizontal layout for larger screens
+                self.header = BoxLayout(
+                    orientation='horizontal', 
+                    size_hint=(1, None), 
+                    height=self.ui_config.responsive.header_height,
+                    spacing=self.spacing
+                )
+                
+                # Account name label
+                self.account_label = self.create_label(
+                    text=f"Account: {self.account_name}",
+                    size_hint=(0.7, 1),
+                    halign='left'
+                )
+                self.header.add_widget(self.account_label)
+                
+                # Balance label
+                self.balance_label = self.create_label(
+                    text="Balance: Loading...",
+                    size_hint=(0.3, 1),
+                    halign='right'
+                )
+                self.header.add_widget(self.balance_label)
+            
+            self.add_widget(self.header)
+            
+        except Exception as e:
+            logger.error(f"Error creating account header: {e}")
+            self.show_error("Error creating account header")
+            # Recreate balance label with proper settings
+            self.balance_label = self.create_label(
+                text="Balance: Loading...",
+                size_hint=(0.3, 1),
+                halign='right',
+                valign='middle',
+                text_size=(None, None)
+            )
+            self.header.add_widget(self.account_label)
+            self.header.add_widget(self.balance_label)
+        
+        self.add_widget(self.header)
+        
         # Results label
-        self.results_label = self.create_label(
-            "Loading transactions...",
-            size_hint_y=None,
-            height=self.ui_config.responsive.button_height
+        self.results_label = Label(
+            text=f"Transactions for {self.account_name}",
+            size_hint=(1, None),
+            height=30,
+            halign='left' if not self.is_mobile else 'center',
+            valign='middle'
         )
         self.add_widget(self.results_label)
-
-        # Create grid for results
-        self.results_grid = GridLayout(
-            cols=7,  # Same as main transaction grid
-            size_hint_y=None,
-            spacing=2
-        )
+        
+        # Transactions grid in a scroll view
+        self.scroll_view = ScrollView(size_hint=(1, 1))  # Take all remaining space
+        
+        # Grid for transactions with responsive columns
+        if self.is_mobile:
+            # Fewer columns on mobile for better readability
+            self.results_grid = GridLayout(cols=4, spacing=1, size_hint_y=None)
+        else:
+            # Full columns on larger screens
+            self.results_grid = GridLayout(cols=6, spacing=2, size_hint_y=None)
+        
+        # The height will be set based on the children
         self.results_grid.bind(minimum_height=self.results_grid.setter('height'))
-
-        # Add scroll view
-        scroll_view = ScrollView(size_hint=(1, 0.7))
-        scroll_view.add_widget(self.results_grid)
-        self.add_widget(scroll_view)
-
-    def _create_balance_display(self):
-        """Create the balance display area."""
-        balance_layout = self._create_responsive_layout(
-            orientation='horizontal',
-            size_hint_y=None,
-            height=self.ui_config.responsive.button_height
-        )
-
-        # Balance label
-        self.balance_label = self.create_label(
-            "Balance: Calculating...",
-            size_hint_x=0.7
-        )
-        balance_layout.add_widget(self.balance_label)
-
-        # Spacer
-        balance_layout.add_widget(self.create_label("", size_hint_x=0.3))
-
-        self.add_widget(balance_layout)
-
-    def _create_responsive_layout(self, **kwargs):
-        """Create a layout with responsive properties."""
-        layout = BoxLayout(**kwargs)
-        layout.padding = self.ui_config.responsive.padding
-        layout.spacing = self.ui_config.responsive.spacing
-        return layout
-
-    def update_results(self, transactions_df):
-        """Update the transaction results display.
-
-        Args:
-            transactions_df: DataFrame containing account transactions
-        """
-        try:
-            # Update results label
-            count = len(transactions_df) if transactions_df is not None else 0
-            self.results_label.text = f"{count} transactions for {self.account_name}"
-
-            # Populate grid with transaction data
-            if transactions_df is not None and not transactions_df.empty:
-                populate_grid_with_dataframe(
-                    self.results_grid,
-                    transactions_df,
-                    ["Date", "Account", "Payee", "Category", "Tags", "Notes", "Amount"],
-                    sort_callback=self._handle_sort,
-                    row_click_callback=self._handle_row_click
-                )
-            else:
-                # Clear grid if no transactions
-                self.results_grid.clear_widgets()
-                self.results_grid.cols = 7
-                # Add a single label indicating no transactions
-                no_data_label = self.create_label("No transactions found for this account.")
-                no_data_label.height = self.ui_config.responsive.button_height * 2
-                self.results_grid.add_widget(no_data_label)
-                self.results_grid.height = no_data_label.height
-
-        except Exception as e:
-            logger.error(f"Error updating account results: {e}")
-            self.show_error(f"Error updating account results: {e}")
-
-    def _handle_sort(self, column_header):
-        """Handle sorting of transactions by column."""
-        logger.info(f"Sorting by column: {column_header}")
-        # This would typically trigger a resort of the data
-        # For now, just log the event
-
-    def _handle_row_click(self, transaction_data):
-        """Handle clicking on a transaction row."""
-        logger.info(f"Transaction row clicked: {transaction_data}")
-        # This would typically open a detail view
-        # For now, just log the event
-
-    def update_balance(self, balance: float):
-        """Update the displayed account balance.
-
-        Args:
-            balance: New balance amount to display
-        """
-        try:
+        
+        # Add grid to scroll view
+        self.scroll_view.add_widget(self.results_grid)
+        
+        # Add scroll view to main layout
+        self.add_widget(self.scroll_view)
+        
+        # Bind size to update text_size
+        self.bind(size=self.update_text_size)
+    
+    def update_text_size(self, instance, value):
+        """Update text_size when the widget size changes."""
+        if hasattr(self, 'account_label'):
+            self.account_label.text_size = (self.account_label.width, None)
+        if hasattr(self, 'balance_label'):
+            self.balance_label.text_size = (self.balance_label.width, None)
+    
+    def update_balance(self, balance):
+        """Update the displayed balance."""
+        if hasattr(self, 'balance_label'):
             self.balance_label.text = f"Balance: ${balance:.2f}"
-        except Exception as e:
-            logger.error(f"Error updating balance display: {e}")
-            self.balance_label.text = f"Balance: Error - {e}"
-
-    def update_status(self, status_message: str):
-        """Update the status display.
-
-        Args:
-            status_message: Status message to display
-        """
-        try:
-            self.results_label.text = status_message
-        except Exception as e:
-            logger.error(f"Error updating status: {e}")
