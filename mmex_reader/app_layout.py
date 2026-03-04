@@ -37,7 +37,7 @@ from db_utils import (
 )
 from ui import AccountTabContent, DatePickerButton, show_popup
 from ui import populate_grid_with_dataframe, TransactionDetailsPopup
-from visualization_refactored import VisualizationTab
+from visualization import VisualizationTab
 from config_manager import config_manager
 from async_utils import AsyncDatabaseOperation, LoadingIndicator, AsyncQueryManager
 from pagination_utils import PaginationInfo, get_offset_limit, get_transaction_count
