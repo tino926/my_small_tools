@@ -12,6 +12,48 @@ from mmex_reader.db_schema import (
     TRANSACTION_TABLE, PAYEE_TABLE, TAG_TABLE, TAGLINK_TABLE,
     ACCOUNT_COLS
 )
+
+def get_transactions_by_date_range(conn: sqlite3.Connection, start_date: str, end_date: str) -> pd.DataFrame:
+    """Get transactions within a specified date range for MMEXReader."""
+    query = f"""
+        SELECT 
+            t.TRANSDATE AS Date,
+            t.TRANSCODE AS Type,
+            c.CATEGNAME AS Category,
+            s.SUBCATEGNAME AS Subcategory,
+            t.TRANSAMOUNT AS Amount,
+            t.NOTES AS Notes,
+            p.PAYEENAME AS Payee,
+            a.ACCOUNTNAME AS Account
+        FROM {TRANSACTION_TABLE} t
+        LEFT JOIN {CATEGORY_TABLE} c ON t.CATEGID = c.CATEGID
+        LEFT JOIN {SUBCATEGORY_TABLE} s ON t.SUBCATEGID = s.SUBCATEGID
+        LEFT JOIN {PAYEE_TABLE} p ON t.PAYEEID = p.PAYEEID
+        LEFT JOIN {ACCOUNT_TABLE} a ON t.ACCOUNTID = a.ACCOUNTID
+        WHERE t.TRANSDATE BETWEEN ? AND ?
+        ORDER BY t.TRANSDATE DESC
+    """
+    try:
+        error, df = handle_database_query(conn, query, params=(start_date, end_date))
+        if error:
+            return pd.DataFrame()
+        if not df.empty and 'Date' in df.columns:
+            df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+def count_transactions_by_date_range(conn: sqlite3.Connection, start_date: str, end_date: str) -> int:
+    """Return count of transactions within a date range for MMEXReader."""
+    query = f"SELECT COUNT(*) FROM {TRANSACTION_TABLE} WHERE TRANSDATE BETWEEN ? AND ?"
+    try:
+        error, rows = handle_database_query(conn, query, params=(start_date, end_date), return_dataframe=False)
+        if error or not rows:
+            return 0
+        cnt = rows[0][0] if isinstance(rows[0], (list, tuple)) else int(rows[0])
+        return int(cnt)
+    except Exception:
+        return 0
 from mmex_reader.db_connection import _connection_pool, _ensure_pool_for_path
 
 logger = logging.getLogger(__name__)
