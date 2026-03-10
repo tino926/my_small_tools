@@ -1,6 +1,6 @@
-"""MMEX Database Reader Module - Step 1 Refactor.
+"""MMEX Database Reader Module - Step 2 Refactor.
 
-This step migrates transaction query logic to db_queries.py.
+This step migrates the MMEXReaderConfig class to its own module.
 """
 
 import logging
@@ -8,15 +8,15 @@ import os
 import sqlite3
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Union
-from dataclasses import dataclass
 
 import pandas as pd
 from dotenv import load_dotenv
 
 from mmex_reader.db_utils import _connection_pool, load_db_path
-from mmex_reader.error_handling import handle_database_query, is_valid_date_format, is_valid_date_range
+from mmex_reader.error_handling import handle_database_query
 from mmex_reader.db_queries import get_transactions_by_date_range as db_get_transactions_by_date_range
 from mmex_reader.db_queries import count_transactions_by_date_range as db_count_transactions_by_date_range
+from mmex_reader.reader_config import MMEXReaderConfig
 
 # Configure logging
 logging.basicConfig(
@@ -25,59 +25,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class MMEXReaderConfig:
-    """Configuration class for MMEX Reader settings."""
-    start_date: str = "2025-01-01"
-    end_date: str = "2025-05-31"
-    db_file_path: Optional[str] = None
-    output_format: str = "console"
-    max_sample_rows: int = 3
-    show_schema: bool = True
-    show_transactions: bool = True
-    date_format: str = "%Y-%m-%d"
-    
-    VALID_OUTPUT_FORMATS = ('console', 'csv', 'json')
-    
-    def __post_init__(self) -> None:
-        self.validate()
-    
-    def validate(self) -> None:
-        self._validate_dates()
-        self._validate_output_format()
-        self._validate_sample_rows()
-    
-    def _validate_dates(self) -> None:
-        if not is_valid_date_format(self.start_date, "start_date"):
-            raise ValueError(f"Invalid start_date format: {self.start_date}")
-        if not is_valid_date_format(self.end_date, "end_date"):
-            raise ValueError(f"Invalid end_date format: {self.end_date}")
-        if not is_valid_date_range(self.start_date, self.end_date):
-            raise ValueError(f"Invalid date range")
-    
-    def _validate_output_format(self) -> None:
-        if self.output_format not in self.VALID_OUTPUT_FORMATS:
-            raise ValueError(f"Invalid output_format: {self.output_format}")
-    
-    def _validate_sample_rows(self) -> None:
-        if self.max_sample_rows < 0:
-            raise ValueError("max_sample_rows must be non-negative")
-    
-    @classmethod
-    def from_env(cls) -> 'MMEXReaderConfig':
-        try:
-            return cls(
-                start_date=os.getenv("MMEX_START_DATE", "2025-01-01"),
-                end_date=os.getenv("MMEX_END_DATE", "2025-05-31"),
-                db_file_path=os.getenv("DB_FILE_PATH"),
-                output_format=os.getenv("MMEX_OUTPUT_FORMAT", "console"),
-                max_sample_rows=int(os.getenv("MMEX_MAX_SAMPLE_ROWS", "3")),
-                show_schema=os.getenv("MMEX_SHOW_SCHEMA", "true").lower() == "true",
-                show_transactions=os.getenv("MMEX_SHOW_TRANSACTIONS", "true").lower() == "true"
-            )
-        except ValueError:
-            return cls()
 
 class MMEXReader:
     """Main class for reading and analyzing MMEX database files."""
@@ -123,9 +70,9 @@ class MMEXReader:
         if not self.is_connected or not self.connection:
             raise RuntimeError("Not connected to database")
             
-    def get_schema_info(self) -> Dict[str, List[str]]:
+    def get_schem-info(self) -> Dict[str, List[str]]:
         self._ensure_connected()
-        schema_info = {}
+        schem-info = {}
         try:
             cursor = self.connection.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -134,14 +81,14 @@ class MMEXReader:
                 table_name = table[0]
                 cursor.execute(f"PRAGMA table_info({table_name});")
                 columns = cursor.fetchall()
-                schema_info[table_name] = [column[1] for column in columns]
-            return schema_info
+                schem-info[table_name] = [column[1] for column in columns]
+            return schem-info
         except sqlite3.Error:
             raise
             
     def get_database_schema(self) -> Dict[str, List[Dict[str, Any]]]:
         self._ensure_connected()
-        schema_info = {}
+        schem-info = {}
         cursor = self.connection.cursor()
         try:
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -150,12 +97,12 @@ class MMEXReader:
                 table_name = table_row[0]
                 cursor.execute(f"PRAGMA table_info('{table_name}');")
                 columns_info = cursor.fetchall()
-                schema_info[table_name] = [
+                schem-info[table_name] = [
                     {'name': col[1], 'type': col[2], 'notnull': bool(col[3]), 
                      'default_value': col[4], 'primary_key': bool(col[5])}
                     for col in columns_info
                 ]
-            return schema_info
+            return schem-info
         except sqlite3.Error:
             raise
     
@@ -189,12 +136,12 @@ class MMEXReader:
         end = end_date if end_date is not None else self.config.end_date
         return db_count_transactions_by_date_range(self.connection, start, end)
     
-    def display_schema_info(self) -> None:
+    def display_schem-info(self) -> None:
         self._ensure_connected()
         try:
-            schema_info = self.get_database_schema()
+            schem-info = self.get_database_schema()
             print("\n=== DATABASE SCHEMA ===")
-            for table_name, columns in schema_info.items():
+            for table_name, columns in schem-info.items():
                 print(f"\nTable: {table_name}")
                 for col in columns:
                     print(f"  - {col['name']} ({col['type']})")
@@ -231,7 +178,7 @@ class MMEXReader:
     def run_analysis(self) -> None:
         try:
             if not self.connect(): return
-            if self.config.show_schema: self.display_schema_info()
+            if self.config.show_schema: self.display_schem-info()
             if self.config.show_transactions: self.display_transactions()
         finally:
             self.disconnect()
