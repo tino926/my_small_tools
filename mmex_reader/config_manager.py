@@ -1,15 +1,17 @@
-"""Configuration Management Module for MMEX Reader Application.
+"""Configuration Management Module for MMEX Reader Application - Step 1 Refactor.
 
-This module provides a centralized configuration management system that supports
-both file-based configuration (.env files) and GUI-based settings management.
+This step extracts the AppConfig dataclass to a separate config_model.py module.
 """
 
 import json
 import os
+import hashlib
 from datetime import datetime
-from dataclasses import dataclass, asdict
 from typing import Optional, Dict, Any
 from pathlib import Path
+
+# Extracting AppConfig to config_model.py
+from mmex_reader.config_model import AppConfig
 
 try:
     from ui_config_new import show_popup
@@ -23,47 +25,6 @@ except Exception:
     class BasePopup:
         pass
 
-
-@dataclass
-class AppConfig:
-    """Application configuration data class."""
-    
-    # Database settings
-    db_file_path: str = ""
-    
-    # UI settings
-    page_size: int = 50
-    default_font_size: int = 14
-    theme_mode: str = "light"  # "light" or "dark"
-    
-    # Date settings
-    date_format: str = "%Y-%m-%d"
-    default_date_range_days: int = 30
-    
-    # Performance settings
-    enable_caching: bool = True
-    cache_timeout_minutes: int = 15
-    max_cache_size_mb: int = 100
-    
-    # Export settings
-    default_export_format: str = "csv"  # "csv", "json", "pdf"
-    export_directory: str = ""
-    
-    # Chart settings
-    default_chart_type: str = "Monthly Spending"
-    chart_color_scheme: str = "default"
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert config to dictionary."""
-        return asdict(self)
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'AppConfig':
-        """Create config from dictionary."""
-        return cls(**data)
-
-
-import hashlib
 
 class ConfigManager:
     """Manages application configuration with file persistence."""
