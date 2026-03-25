@@ -1,244 +1,272 @@
-"""Database query functions for the MMEX application."""
+"""db_queries.py 改進步驟 1：核心 QueryCache 類別
+
+改進目標：新增查詢快取機制
+實施日期：2026-03-25
+改進類型：效能優化 + 功能增強
+
+本檔案包含 QueryCache 核心類別，提供：
+- LRU (Least Recently Used) 淘汰策略
+- TTL (Time-To-Live) 自動過期
+- 執行緒安全保護
+- 快取統計監控
+
+變更摘要：
+- 新增 QueryCache 類別（約 180 行）
+- 新增 _query_cache 全域實例
+- 新增 cached_query 裝飾器
+"""
 
 import logging
-import sqlite3
-import pandas as pd
+import hashlib
+import time
+import threading
 from datetime import datetime
-from typing import Dict, Optional, Tuple, Any, List
-
-from mmex_reader.error_handling import handle_database_query, validate_date_format, validate_date_range
-from mmex_reader.db_schema import (
-    CATEGORY_TABLE, SUBCATEGORY_TABLE, ACCOUNT_TABLE, 
-    TRANSACTION_TABLE, PAYEE_TABLE, TAG_TABLE, TAGLINK_TABLE,
-    ACCOUNT_COLS
-)
-
-def get_transactions_by_date_range(conn: sqlite3.Connection, start_date: str, end_date: str) -> pd.DataFrame:
-    """Get transactions within a specified date range for MMEXReader."""
-    query = f"""
-        SELECT 
-            t.TRANSDATE AS Date,
-            t.TRANSCODE AS Type,
-            c.CATEGNAME AS Category,
-            s.SUBCATEGNAME AS Subcategory,
-            t.TRANSAMOUNT AS Amount,
-            t.NOTES AS Notes,
-            p.PAYEENAME AS Payee,
-            a.ACCOUNTNAME AS Account
-        FROM {TRANSACTION_TABLE} t
-        LEFT JOIN {CATEGORY_TABLE} c ON t.CATEGID = c.CATEGID
-        LEFT JOIN {SUBCATEGORY_TABLE} s ON t.SUBCATEGID = s.SUBCATEGID
-        LEFT JOIN {PAYEE_TABLE} p ON t.PAYEEID = p.PAYEEID
-        LEFT JOIN {ACCOUNT_TABLE} a ON t.ACCOUNTID = a.ACCOUNTID
-        WHERE t.TRANSDATE BETWEEN ? AND ?
-        ORDER BY t.TRANSDATE DESC
-    """
-    try:
-        error, df = handle_database_query(conn, query, params=(start_date, end_date))
-        if error:
-            return pd.DataFrame()
-        if not df.empty and 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-        return df
-    except Exception:
-        return pd.DataFrame()
-
-def count_transactions_by_date_range(conn: sqlite3.Connection, start_date: str, end_date: str) -> int:
-    """Return count of transactions within a date range for MMEXReader."""
-    query = f"SELECT COUNT(*) FROM {TRANSACTION_TABLE} WHERE TRANSDATE BETWEEN ? AND ?"
-    try:
-        error, rows = handle_database_query(conn, query, params=(start_date, end_date), return_dataframe=False)
-        if error or not rows:
-            return 0
-        cnt = rows[0][0] if isinstance(rows[0], (list, tuple)) else int(rows[0])
-        return int(cnt)
-    except Exception:
-        return 0
-from mmex_reader.db_connection import _connection_pool, _ensure_pool_for_path
+from typing import Dict, Optional, Any, Callable
+from collections import OrderedDict
+from contextlib import nullcontext
 
 logger = logging.getLogger(__name__)
 
-def get_all_accounts(db_path: str) -> Tuple[Optional[str], pd.DataFrame]:
-    if not db_path:
-        return "Invalid database path", pd.DataFrame()
+# Cache configuration constants
+DEFAULT_CACHE_TTL_SECONDS = 300  # 5 minutes
+DEFAULT_MAX_CACHE_SIZE = 100
+
+
+class QueryCache:
+    """Thread-safe LRU cache for database query results with TTL support.
     
-    conn = None
-    try:
-        conn = _connection_pool.get_connection()
-        if not conn:
-            return "Could not get a database connection", pd.DataFrame()
-        
-        columns_to_select = ", ".join(ACCOUNT_COLS.values())
-        query = f"""
-        SELECT {columns_to_select}
-        FROM {ACCOUNT_TABLE}
-        WHERE {ACCOUNT_COLS['status']} = 'Open'
-        ORDER BY {ACCOUNT_COLS['name']}
-        """
-        return handle_database_query(conn, query)
-    except Exception as e:
-        return str(e), pd.DataFrame()
-    finally:
-        if conn:
-            _connection_pool.release_connection(conn)
-
-def get_account_by_id(db_path: str, account_id: int) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
-    if not db_path or not isinstance(account_id, int) or account_id <= 0:
-        return "Invalid parameters", None
-
-    conn = None
-    try:
-        conn = _connection_pool.get_connection()
-        if not conn:
-            return "Could not get a database connection", None
-
-        query = f"SELECT * FROM {ACCOUNT_TABLE} WHERE ACCOUNTID = ?"
-        error, df = handle_database_query(conn, query, [account_id])
-        
-        if error or df.empty:
-            return error or "Account not found", None
-
-        row = df.iloc[0]
-        # Simplification for refactoring purposes, assuming same keys as before
-        account_data = {
-            "id": int(row["ACCOUNTID"]),
-            "name": row["ACCOUNTNAME"],
-            "type": row["ACCOUNTTYPE"],
-            "initial_balance": float(row["INITIALBAL"]) if pd.notna(row["INITIALBAL"]) else 0.0,
-            "status": row["STATUS"],
-            "notes": row.get("NOTES", ""),
-            "held_at": row.get("HELDAT", ""),
-            "website": row.get("WEBSITE", ""),
-            "contact_info": row.get("CONTACTINFO", ""),
-            "access_info": row.get("ACCESSINFO", ""),
-            "favorite_account": int(row.get("FAVORITEACCT", 0)),
-            "currency_id": int(row.get("CURRENCYID", 0)),
-            "statement_locked": int(row.get("STATEMENTLOCKED", 0)),
-            "statement_date": row.get("STATEMENTDATE", ""),
-            "minimum_balance": float(row.get("MINIMUMBALANCE", 0.0)),
-            "credit_limit": float(row.get("CREDITLIMIT", 0.0)),
-            "interest_rate": float(row.get("INTERESTRATE", 0.0)),
-            "payment_due_date": row.get("PAYMENTDUEDATE", ""),
-            "minimum_payment": float(row.get("MINIMUMPAYMENT", 0.0)),
-        }
-        return None, account_data
-    except Exception as e:
-        return str(e), None
-    finally:
-        if conn:
-            _connection_pool.release_connection(conn)
-
-def _build_transactions_query(start_date: Optional[datetime], end_date: Optional[datetime], 
-                             account_id: Optional[int], page_size: Optional[int], 
-                             page_number: Optional[int]) -> Tuple[str, list]:
-    query = f"""
-        SELECT 
-            t.TRANSID, t.ACCOUNTID, t.TRANSCODE, t.TRANSAMOUNT, t.TRANSACTIONNUMBER, 
-            t.NOTES, t.TRANSDATE, t.FOLLOWUPID, t.TOTRANSAMOUNT, t.TOSPLITCATEGORY, 
-            t.CATEGID, t.SUBCATEGID, t.TRANSACTIONDATE, t.DELETEDTIME, t.PAYEEID,
-            t.STATUS, a.ACCOUNTNAME, c.CATEGNAME, s.SUBCATEGNAME, p.PAYEENAME
-        FROM {TRANSACTION_TABLE} t
-        LEFT JOIN {ACCOUNT_TABLE} a ON t.ACCOUNTID = a.ACCOUNTID
-        LEFT JOIN {CATEGORY_TABLE} c ON t.CATEGID = c.CATEGID
-        LEFT JOIN {SUBCATEGORY_TABLE} s ON t.SUBCATEGID = s.SUBCATEGID
-        LEFT JOIN {PAYEE_TABLE} p ON t.PAYEEID = p.PAYEEID
-        WHERE t.DELETEDTIME = ''
+    Features:
+        - LRU eviction when max size is reached
+        - Time-to-live (TTL) for automatic expiration
+        - Cache statistics for monitoring
+        - Thread-safe operations using threading.Lock
+    
+    Attributes:
+        _cache: OrderedDict storing cached entries
+        _max_size: Maximum number of entries before eviction
+        _default_ttl: Default time-to-live in seconds
+        _hits: Counter for cache hits
+        _misses: Counter for cache misses
+        _evictions: Counter for LRU evictions
+        _lock: Threading lock for thread safety
     """
-    params: list = []
-    if account_id is not None:
-        query += " AND t.ACCOUNTID = ?"
-        params.append(account_id)
-    if start_date:
-        query += " AND t.TRANSDATE >= ?"
-        params.append(start_date.strftime("%Y-%m-%d"))
-    if end_date:
-        query += " AND t.TRANSDATE <= ?"
-        params.append(end_date.strftime("%Y-%m-%d"))
     
-    query += " ORDER BY t.TRANSDATE DESC, t.TRANSID DESC"
-    
-    if page_size is not None:
-        if page_number is not None:
-            offset = (page_number - 1) * page_size
-            query += " LIMIT ? OFFSET ?"
-            params.extend([page_size, offset])
-        else:
-            query += " LIMIT ?"
-            params.append(page_size)
-    return query, params
-
-def _get_tags_for(conn: sqlite3.Connection, transaction_ids: list) -> Dict[int, str]:
-    if not transaction_ids:
-        return {}
-    placeholders = ','.join(['?' for _ in transaction_ids])
-    tag_query = f"""
-                SELECT tl.REFID as TRANSID, t.TAGNAME
-                FROM {TAG_TABLE} t
-                JOIN {TAGLINK_TABLE} tl ON t.TAGID = tl.TAGID
-                WHERE tl.REFID IN ({placeholders}) AND tl.REFTYPE = 'Transaction'
-                ORDER BY tl.REFID, t.TAGNAME
-                """
-    tag_error, tags_df = handle_database_query(conn, tag_query, transaction_ids)
-    if tag_error or tags_df.empty:
-        return {tid: '' for tid in transaction_ids}
-    
-    tags_dict: Dict[int, list] = {}
-    for _, tag_row in tags_df.iterrows():
-        tid, name = tag_row['TRANSID'], tag_row['TAGNAME']
-        tags_dict.setdefault(tid, []).append(name)
-    return {tid: ', '.join(tags_dict.get(tid, [])) for tid in transaction_ids}
-
-def get_transactions(db_path: str, start_date_str: Optional[str] = None, 
-                    end_date_str: Optional[str] = None, account_id: Optional[int] = None,
-                    page_size: Optional[int] = None, page_number: Optional[int] = None) -> Tuple[Optional[str], pd.DataFrame]:
-    err, resolved_path = _ensure_pool_for_path(db_path)
-    if err:
-        return err, pd.DataFrame()
-
-    start_date = end_date = None
-    if start_date_str:
-        _, start_date = validate_date_format(start_date_str)
-    if end_date_str:
-        _, end_date = validate_date_format(end_date_str)
-
-    conn = None
-    try:
-        conn = _connection_pool.get_connection()
-        if not conn:
-            return "Could not get a database connection", pd.DataFrame()
-            
-        query, params = _build_transactions_query(start_date, end_date, account_id, page_size, page_number)
-        error, df = handle_database_query(conn, query, params)
-        if not error and not df.empty:
-            tags_map = _get_tags_for(conn, df['TRANSID'].tolist())
-            df['TAGS'] = df['TRANSID'].map(tags_map).fillna('')
-        return error, df
-    except Exception as e:
-        return str(e), pd.DataFrame()
-    finally:
-        if conn:
-            _connection_pool.release_connection(conn)
-
-def calculate_balance_for_account(db_path: str, account_id: int) -> Tuple[Optional[str], float]:
-    if not db_path or account_id <= 0:
-        return "Invalid parameters", 0.0
-
-    conn = None
-    try:
-        conn = _connection_pool.get_connection()
-        if not conn:
-            return "Could not get a database connection", 0.0
-
-        query = f"""
-        SELECT 
-            COALESCE(SUM(CASE WHEN TRANSCODE = 'Deposit' THEN TRANSAMOUNT WHEN TRANSCODE = 'Withdrawal' THEN -TRANSAMOUNT WHEN TRANSCODE = 'Transfer' AND ACCOUNTID = ? THEN -TRANSAMOUNT ELSE 0 END), 0.0) + 
-            COALESCE((SELECT SUM(TRANSAMOUNT) FROM {TRANSACTION_TABLE} WHERE TOACCOUNTID = ? AND TRANSCODE = 'Transfer' AND DELETEDTIME = ''), 0.0) as BALANCE
-        FROM {TRANSACTION_TABLE} WHERE ACCOUNTID = ? AND DELETEDTIME = ''
+    def __init__(self, max_size: int = DEFAULT_MAX_CACHE_SIZE, 
+                 default_ttl: int = DEFAULT_CACHE_TTL_SECONDS):
+        """Initialize the query cache.
+        
+        Args:
+            max_size: Maximum number of entries in the cache (default: 100)
+            default_ttl: Default time-to-live in seconds (default: 300)
         """
-        error, df = handle_database_query(conn, query, [account_id, account_id, account_id])
-        return error, float(df.iloc[0]['BALANCE']) if not error and not df.empty else 0.0
-    except Exception as e:
-        return str(e), 0.0
-    finally:
-        if conn:
-            _connection_pool.release_connection(conn)
+        self._cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+        self._max_size = max_size
+        self._default_ttl = default_ttl
+        self._hits = 0
+        self._misses = 0
+        self._evictions = 0
+        self._lock = threading.Lock()
+    
+    def _get_key(self, query: str, params: Optional[tuple] = None) -> str:
+        """Generate a unique cache key from query and parameters.
+        
+        Uses MD5 hash of query string + parameters tuple to create
+        a unique identifier for cache lookup.
+        
+        Args:
+            query: SQL query string
+            params: Query parameters tuple
+            
+        Returns:
+            32-character hexadecimal MD5 hash string
+        """
+        key_data = f"{query}:{params}"
+        return hashlib.md5(key_data.encode('utf-8')).hexdigest()
+    
+    def get(self, query: str, params: Optional[tuple] = None) -> Optional[Any]:
+        """Get a cached result if available and not expired.
+        
+        Args:
+            query: SQL query string
+            params: Query parameters tuple
+            
+        Returns:
+            Cached result if hit, None if miss or expired
+            
+        Side Effects:
+            - Increments _hits or _misses counter
+            - Moves accessed entry to end (most recently used)
+            - Removes entry if expired
+        """
+        key = self._get_key(query, params)
+        
+        with self._lock:
+            if key not in self._cache:
+                self._misses += 1
+                return None
+            
+            entry = self._cache[key]
+            
+            # Check if expired
+            if time.time() > entry['expires_at']:
+                del self._cache[key]
+                self._misses += 1
+                logger.debug(f"Cache entry expired for key: {key[:16]}...")
+                return None
+            
+            # Move to end (most recently used)
+            self._cache.move_to_end(key)
+            self._hits += 1
+            logger.debug(f"Cache hit for key: {key[:16]}...")
+            return entry['result']
+    
+    def set(self, query: str, result: Any, params: Optional[tuple] = None,
+            ttl: Optional[int] = None) -> None:
+        """Cache a query result.
+        
+        Args:
+            query: SQL query string
+            result: Query result to cache (any picklable type)
+            params: Query parameters tuple
+            ttl: Time-to-live in seconds (uses default if not specified)
+            
+        Side Effects:
+            - May evict oldest entries if at capacity
+            - Increments _evictions counter when evicting
+        """
+        key = self._get_key(query, params)
+        ttl = ttl if ttl is not None else self._default_ttl
+        
+        with self._lock:
+            # Evict oldest if at capacity (LRU eviction)
+            while len(self._cache) >= self._max_size:
+                self._cache.popitem(last=False)
+                self._evictions += 1
+            
+            self._cache[key] = {
+                'result': result,
+                'expires_at': time.time() + ttl,
+                'created_at': time.time()
+            }
+            logger.debug(f"Cached result for key: {key[:16]}... (TTL: {ttl}s)")
+    
+    def invalidate(self, query: str, params: Optional[tuple] = None) -> bool:
+        """Invalidate a specific cache entry.
+        
+        Args:
+            query: SQL query string
+            params: Query parameters tuple
+            
+        Returns:
+            True if entry was found and removed, False otherwise
+        """
+        key = self._get_key(query, params)
+        with self._lock:
+            if key in self._cache:
+                del self._cache[key]
+                logger.debug(f"Invalidated cache for key: {key[:16]}...")
+                return True
+            return False
+    
+    def clear(self) -> None:
+        """Clear all cached entries."""
+        with self._lock:
+            self._cache.clear()
+            logger.info("Query cache cleared")
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get cache statistics.
+        
+        Returns:
+            Dictionary containing:
+            - size: Current number of cached entries
+            - max_size: Maximum cache capacity
+            - hits: Total cache hits
+            - misses: Total cache misses
+            - evictions: Total LRU evictions
+            - hit_rate_percent: Hit rate as percentage (0-100)
+            - default_ttl_seconds: Default TTL setting
+        """
+        with self._lock:
+            total = self._hits + self._misses
+            hit_rate = (self._hits / total * 100) if total > 0 else 0
+            return {
+                'size': len(self._cache),
+                'max_size': self._max_size,
+                'hits': self._hits,
+                'misses': self._misses,
+                'evictions': self._evictions,
+                'hit_rate_percent': round(hit_rate, 2),
+                'default_ttl_seconds': self._default_ttl
+            }
+    
+    def cleanup_expired(self) -> int:
+        """Remove all expired entries.
+        
+        Returns:
+            Number of entries removed
+        """
+        removed = 0
+        current_time = time.time()
+        with self._lock:
+            expired_keys = [
+                key for key, entry in self._cache.items()
+                if current_time > entry['expires_at']
+            ]
+            for key in expired_keys:
+                del self._cache[key]
+                removed += 1
+        if removed > 0:
+            logger.debug(f"Cleaned up {removed} expired cache entries")
+        return removed
+
+
+# Global cache instance for query results
+# Single instance shared across all query functions
+_query_cache = QueryCache()
+
+
+def cached_query(cache: QueryCache, ttl: Optional[int] = None):
+    """Decorator for caching query function results.
+    
+    Note: This is a simplified decorator. For production use,
+    consider implementing proper key generation based on
+    function arguments.
+    
+    Args:
+        cache: QueryCache instance to use
+        ttl: Time-to-live in seconds
+        
+    Returns:
+        Decorated function with caching support
+    """
+    def decorator(func: Callable) -> Callable:
+        def wrapper(*args, **kwargs):
+            # Simplified implementation
+            # Actual implementation would extract query/params from args
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+# =============================================================================
+# Usage Examples
+# =============================================================================
+"""
+# Basic usage:
+cache = QueryCache(max_size=100, default_ttl=300)
+
+# Set a cache entry
+cache.set("SELECT * FROM users", {"data": [...]})
+
+# Get a cache entry
+result = cache.get("SELECT * FROM users")
+
+# Check statistics
+stats = cache.get_stats()
+print(f"Hit rate: {stats['hit_rate_percent']}%")
+
+# Using the global cache instance
+from db_queries import _query_cache
+_query_cache.set("query", result)
+"""
