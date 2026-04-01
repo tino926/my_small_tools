@@ -84,3 +84,25 @@ class QueryCache:
 
 # Global cache instance
 _query_cache = QueryCache()
+
+
+# =============================================================================
+# Cache Management Functions
+# =============================================================================
+
+def get_cache_stats() -> Dict[str, Any]:
+    """Get query cache statistics."""
+    return _query_cache.get_stats()
+
+
+def clear_query_cache() -> None:
+    """Clear all cached query results."""
+    _query_cache.clear()
+    logger.info("Query cache cleared")
+
+
+def invalidate_account_cache(account_id: int) -> None:
+    """Invalidate cache entries for a specific account."""
+    _query_cache.clear()
+    logger.info(f"Cache invalidated for account {account_id}")
+
