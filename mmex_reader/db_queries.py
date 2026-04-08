@@ -86,10 +86,6 @@ class QueryCache:
 _query_cache = QueryCache()
 
 
-# =============================================================================
-# Cache Management Functions
-# =============================================================================
-
 def get_cache_stats() -> Dict[str, Any]:
     """Get query cache statistics."""
     return _query_cache.get_stats()
@@ -106,3 +102,28 @@ def invalidate_account_cache(account_id: int) -> None:
     _query_cache.clear()
     logger.info(f"Cache invalidated for account {account_id}")
 
+
+
+def get_transactions_by_date_range(conn, start_date: str, end_date: str):
+    """Get transactions within a specified date range."""
+    pass
+
+
+def count_transactions_by_date_range(conn, start_date: str, end_date: str) -> int:
+    """Return count of transactions within a date range."""
+    pass
+
+
+def get_all_accounts(db_path: str):
+    """Get all open accounts."""
+    pass
+
+
+def get_account_by_id(db_path: str, account_id: int):
+    """Get account by ID."""
+    pass
+
+
+def calculate_balance_for_account(db_path: str, account_id: int):
+    """Calculate balance for an account."""
+    pass
